@@ -1,5 +1,8 @@
 # Sosistab - an obfuscated datagram transport for horrible networks
 
+[![](https://img.shields.io/crates/v/sosistab)](https://crates.io/crates/sosistab)
+![](https://img.shields.io/crates/l/sosistab)
+
 Sosistab is an unreliable, obfuscated datagram transport over UDP and TCP, designed to achieve high performance even in extremely bad networks. Sosistab can be used for applications like anti-censorship VPNs, reliable communication over radios, game networking, etc. It also comes with a QUIC-like multiplex protocol that implements multiple TCP-like reliable streams over the base sosistab layer. This multiplex protocol is ideal for applications requiring a mix of reliable and unreliable traffic. For example, VPNs might do signaling and authentication over reliable streams, while passing packets through unreliable datagrams.
 
 Features:
