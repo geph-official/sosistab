@@ -1,6 +1,6 @@
 [package]
 name = "sosistab"
-version = "0.2.1-alpha.0"
+version = "0.2.1"
 authors = ["nullchinchilla <nullchinchilla@pm.me>", "Geph Project <contact@geph.io"]
 edition = "2018"
 description="An obfuscated datagram transport for horrible networks"
@@ -38,7 +38,9 @@ indexmap= "1.6.1"
 bloomfilter = "1.0.3"
 concurrent-queue= "1.2.2"
 rand_chacha="0.2"
+rtrb="0.1"
 smolscale= "0.3.0"
+futures-intrusive="0.4"
 async-trait= "0.1.42"
 dashmap= "4.0.1"
 smol-timeout= "0.6.0"

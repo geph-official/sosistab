@@ -128,8 +128,6 @@ pub(crate) enum RelConnState {
 }
 use RelConnState::*;
 
-// static RELCONN_COUNT: Lazy<AtomicUsize> = Lazy::new(AtomicUsize::default);
-
 async fn relconn_actor(
     mut state: RelConnState,
     mut recv_write: BipeReader,
@@ -139,17 +137,11 @@ async fn relconn_actor(
     additional_info: Option<String>,
     dropper: impl FnOnce(),
 ) -> anyhow::Result<()> {
-    // dbg!(RELCONN_COUNT.fetch_add(1, Ordering::Relaxed));
-
-    let _guard = scopeguard::guard((), |_| {
-        // dbg!(RELCONN_COUNT.fetch_sub(1, Ordering::Relaxed));
-        dropper()
-    });
+    let _guard = scopeguard::guard((), |_| dropper());
     let transmit = |msg| {
         let _ = send_wire_write.try_send(msg);
     };
     loop {
-        smol::future::yield_now().await;
         state = match state {
             SynReceived { stream_id } => {
                 tracing::trace!("C={} SynReceived, sending SYN-ACK", stream_id);

@@ -3,7 +3,7 @@ use dashmap::DashMap;
 use rand::prelude::*;
 use smol::channel::{Receiver, Sender};
 use smol::prelude::*;
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use crate::{runtime, safe_deserialize, RelConn, Session};
 
@@ -22,6 +22,21 @@ pub async fn multiplex(
     let conn_tab = Arc::new(ConnTable::default());
     let (glob_send, glob_recv) = smol::channel::bounded(100);
     let (dead_send, dead_recv) = smol::channel::unbounded();
+
+    // Reap death
+    let reap_dead = {
+        let dead_send = dead_send.clone();
+        move |id: u16| {
+            tracing::debug!("reaper received {}", id);
+            runtime::spawn(async move {
+                smol::Timer::after(Duration::from_secs(30)).await;
+                tracing::debug!("reaper executed {}", id);
+                let _ = dead_send.try_send(id);
+            })
+            .detach()
+        }
+    };
+
     let mut session = recv_session.recv().await?;
 
     // enum of possible events
@@ -81,7 +96,7 @@ pub async fn multiplex(
             Event::ConnOpen(additional_data, result_chan) => {
                 let conn_tab = conn_tab.clone();
                 let glob_send = glob_send.clone();
-                let dead_send = dead_send.clone();
+                let reap_dead = reap_dead.clone();
                 runtime::spawn(async move {
                     let stream_id = {
                         let stream_id = conn_tab.find_id();
@@ -94,9 +109,7 @@ pub async fn multiplex(
                                     result: send_sig,
                                 },
                                 glob_send.clone(),
-                                move || {
-                                    let _ = dead_send.try_send(stream_id);
-                                },
+                                move || reap_dead(stream_id),
                                 additional_data.clone(),
                             );
                             runtime::spawn(async move {
@@ -162,15 +175,15 @@ pub async fn multiplex(
                                 )
                                 .await?;
                         } else {
-                            let dead_send = dead_send.clone();
                             tracing::trace!("syn recv {} ACCEPT", stream_id);
                             let lala = String::from_utf8_lossy(&payload).to_string();
                             let additional_info = if lala.is_empty() { None } else { Some(lala) };
+                            let reap_dead = reap_dead.clone();
                             let (new_conn, new_conn_back) = RelConn::new(
                                 RelConnState::SynReceived { stream_id },
                                 glob_send.clone(),
                                 move || {
-                                    let _ = dead_send.try_send(stream_id);
+                                    reap_dead(stream_id);
                                 },
                                 additional_info,
                             );
@@ -210,76 +223,6 @@ pub async fn multiplex(
         }
     }
 }
-
-// match msg {
-//     // unreliable
-//     Message::Urel(bts) => {
-//         tracing::trace!("urel recv {}B", bts.len());
-//         if urel_recv_send.try_send(bts).is_err() {
-//             tracing::warn!("urel recv overflow");
-//         }
-//     }
-//     // connection opening
-//     Message::Rel {
-//         kind: RelKind::Syn,
-//         stream_id,
-//         payload,
-//         ..
-//     } => {
-//         if conn_tab.get_stream(stream_id).is_some() {
-//             tracing::trace!("syn recv {} REACCEPT", stream_id);
-//             session.send_bytes(
-//                 bincode::serialize(&Message::Rel {
-//                     kind: RelKind::SynAck,
-//                     stream_id,
-//                     seqno: 0,
-//                     payload: Bytes::new(),
-//                 })
-//                 .unwrap()
-//                 .into(),
-//             );
-//         } else {
-//             let dead_send = dead_send.clone();
-//             tracing::trace!("syn recv {} ACCEPT", stream_id);
-//             let lala = String::from_utf8_lossy(&payload).to_string();
-//             let additional_info = if lala.is_empty() { None } else { Some(lala) };
-//             let (new_conn, new_conn_back) = RelConn::new(
-//                 RelConnState::SynReceived { stream_id },
-//                 glob_send.clone(),
-//                 move || {
-//                     let _ = dead_send.try_send(stream_id);
-//                 },
-//                 additional_info,
-//             );
-//             // the RelConn itself is responsible for sending the SynAck. Here we just store the connection into the table, accept it, and be done with it.
-//             conn_tab.set_stream(stream_id, new_conn_back);
-//             drop(conn_accept_send.send(new_conn).await);
-//         }
-//     }
-//     // associated with existing connection
-//     Message::Rel {
-//         stream_id, kind, ..
-//     } => {
-//         if let Some(handle) = conn_tab.get_stream(stream_id) {
-//             // tracing::trace!("handing over {:?} to {}", kind, stream_id);
-//             handle.process(msg).await
-//         } else {
-//             tracing::trace!("discarding {:?} to nonexistent {}", kind, stream_id);
-//             if kind != RelKind::Rst {
-//                 session.send_bytes(
-//                     bincode::serialize(&Message::Rel {
-//                         kind: RelKind::Rst,
-//                         stream_id,
-//                         seqno: 0,
-//                         payload: Bytes::new(),
-//                     })
-//                     .unwrap()
-//                     .into(),
-//                 );
-//             }
-//         }
-//     }
-// }
 
 #[derive(Default)]
 struct ConnTable {

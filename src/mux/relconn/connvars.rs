@@ -38,7 +38,7 @@ pub(crate) struct ConnVars {
 
     loss_rate: f64,
 
-    pub closing: bool,
+    closing: bool,
 
     write_fragments: VecDeque<Bytes>,
 
@@ -89,7 +89,6 @@ impl Default for ConnVars {
 
 const ACK_BATCH: usize = 16;
 
-// match on our current state repeatedly
 #[derive(Debug)]
 enum ConnVarEvt {
     Rto(Seqno),
@@ -110,13 +109,11 @@ impl ConnVars {
         recv_wire_read: &Receiver<Message>,
         transmit: impl Fn(Message),
     ) -> anyhow::Result<()> {
-        // let cwnd_choked =
-        //     self.inflight.inflight() <= self.cwnd as usize && self.inflight.len() < 10000;
         match self.next_event(recv_write, recv_wire_read).await {
             Ok(ConnVarEvt::Retransmit(seqno)) => {
                 self.lost_seqnos.retain(|v| *v != seqno);
                 if let Some(msg) = self.inflight.retransmit(seqno) {
-                    tracing::trace!(
+                    tracing::debug!(
                         "** RETRANSMIT {} (inflight = {}, cwnd = {}, lost_count = {}) **",
                         seqno,
                         self.inflight.inflight(),
@@ -129,14 +126,11 @@ impl ConnVars {
             }
             Ok(ConnVarEvt::Closing) => {
                 self.closing = true;
-                if self.inflight.unacked() > 0 {
-                    Ok(())
-                } else {
-                    anyhow::bail!("closing when inflight is zero")
-                }
+                self.check_closed()?;
+                Ok(())
             }
             Ok(ConnVarEvt::Rto(seqno)) => {
-                tracing::trace!(
+                tracing::debug!(
                     "** MARKING LOST {} (unacked = {}, inflight = {}, cwnd = {}, lost_count = {}) **",
                     seqno,
                     self.inflight.unacked(),
@@ -159,7 +153,7 @@ impl ConnVars {
                 ..
             })) => {
                 let seqnos = safe_deserialize::<Vec<Seqno>>(&payload)?;
-                tracing::trace!("new ACK pkt with {} seqnos", seqnos.len());
+                tracing::debug!("new ACK pkt with {} seqnos", seqnos.len());
                 for seqno in seqnos {
                     self.lost_seqnos.retain(|v| *v != seqno);
                     if self.inflight.mark_acked(seqno) {
@@ -171,12 +165,8 @@ impl ConnVars {
                 if outstanding == 0 {
                     self.in_recovery = false;
                 }
-                // implied_rate.store(conn_vars.pacing_rate() as u32, Ordering::Relaxed);
-                if self.inflight.unacked() == 0 && self.closing {
-                    anyhow::bail!("inflight is zero, and we are now closing")
-                } else {
-                    Ok(())
-                }
+                self.check_closed()?;
+                Ok(())
             }
             Ok(ConnVarEvt::NewPkt(Message::Rel {
                 kind: RelKind::Data,
@@ -253,15 +243,20 @@ impl ConnVars {
         }
     }
 
+    /// Checks the closed flag.
+    fn check_closed(&self) -> anyhow::Result<()> {
+        if self.closing && self.inflight.unacked() == 0 {
+            anyhow::bail!("closing flag set and unacked == 0, so dying");
+        }
+        Ok(())
+    }
     /// Gets the next event.
     async fn next_event(
         &mut self,
         recv_write: &mut BipeReader,
         recv_wire_read: &Receiver<Message>,
     ) -> anyhow::Result<ConnVarEvt> {
-        if rand::random::<f32>() < 0.1 {
-            smol::future::yield_now().await;
-        }
+        // smol::future::yield_now().await;
         // There's a rather subtle logic involved here.
         //
         // We want to make sure the *total inflight* is less than cwnd.
@@ -269,8 +264,10 @@ impl ConnVars {
         // We don't want retransmissions to cause more than CWND packets in flight, any more do we let normal transmissions do so.
         // Thus, we must have a state where a packet is known to be lost, but is not yet retransmitted.
         let first_retrans = self.lost_seqnos.get(0).cloned();
-        let can_retransmit = self.inflight.inflight() <= self.cwnd as usize && !self.closing;
-        let can_write = can_retransmit && self.inflight.unacked() <= self.cwnd as usize;
+        let can_retransmit = self.inflight.inflight() <= self.cwnd as usize;
+        // If we've already closed the connection, we cannot write *new* packets
+        let can_write_new =
+            can_retransmit && self.inflight.unacked() <= self.cwnd as usize && !self.closing;
         let force_ack = self.ack_seqnos.len() >= ACK_BATCH;
         assert!(self.ack_seqnos.len() <= ACK_BATCH);
 
@@ -321,7 +318,7 @@ impl ConnVars {
                 self.write_fragments.pop_front().unwrap(),
             ))
         }
-        .pending_unless(can_write);
+        .pending_unless(can_write_new);
         let new_pkt = async {
             Ok::<ConnVarEvt, anyhow::Error>(ConnVarEvt::NewPkt(recv_wire_read.recv().await?))
         };

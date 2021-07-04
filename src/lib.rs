@@ -28,7 +28,7 @@ pub use client::*;
 pub use listener::*;
 use serde::de::DeserializeOwned;
 use smallvec::SmallVec;
-use std::{future::Future, pin::Pin, task::Poll, time::Duration};
+use std::{future::Future, pin::Pin, task::Poll};
 mod protocol;
 pub mod runtime;
 mod session;
