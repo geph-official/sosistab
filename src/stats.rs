@@ -72,7 +72,6 @@ impl TimeSeries {
 
     fn may_decimate(&mut self) {
         if self.items.len() >= self.max_length {
-            tracing::warn!("decimation!");
             // decimate the whole vector
             let half_map: im::OrdMap<_, _> = self
                 .items
