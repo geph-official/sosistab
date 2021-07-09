@@ -1,12 +1,11 @@
 use crate::crypt;
 use crate::{protocol, runtime, Backhaul, Session, SessionBack, SessionConfig, StatsGatherer};
+use anyhow::Context;
 use bytes::Bytes;
-use governor::{Quota, RateLimiter};
 use rand::prelude::*;
 use smol::prelude::*;
 use std::{
     net::SocketAddr,
-    num::NonZeroU32,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -100,9 +99,6 @@ fn init_session(
     shared_sec: blake3::Hash,
     cfg: LowlevelClientConfig,
 ) -> Session {
-    let remind_ratelimit = Arc::new(RateLimiter::direct(Quota::per_second(
-        NonZeroU32::new(3).unwrap(),
-    )));
     let (mut session, back) = Session::new(SessionConfig {
         version: VERSION,
         gather: cfg.gather.clone(),
@@ -113,7 +109,6 @@ fn init_session(
     let backhaul_tasks: Vec<_> = (0..cfg.num_shards)
         .map(|i| {
             runtime::spawn(client_backhaul_once(
-                remind_ratelimit.clone(),
                 cookie.clone(),
                 resume_token.clone(),
                 back.clone(),
@@ -130,13 +125,6 @@ fn init_session(
 
 #[allow(clippy::all)]
 async fn client_backhaul_once(
-    remind_ratelimit: Arc<
-        RateLimiter<
-            governor::state::NotKeyed,
-            governor::state::InMemoryState,
-            governor::clock::DefaultClock,
-        >,
-    >,
     cookie: crypt::Cookie,
     resume_token: Bytes,
     session_back: Arc<SessionBack>,
@@ -158,34 +146,43 @@ async fn client_backhaul_once(
         rand::thread_rng().gen_range(interval.as_millis() / 2, interval.as_millis())
     });
 
+    // last remind time
+    let mut last_remind: Option<Instant> = None;
+
     loop {
         let down = {
             let socket = &socket;
             async move {
-                match socket.recv_from_many().await {
-                    Err(err) => {
-                        tracing::error!("error receiving packet: {:?}", err);
-                        smol::future::pending().await
-                    }
-                    Ok(packets) => Some(Evt::Incoming(packets.into_iter().map(|v| v.0).collect())),
-                }
+                let packets = socket
+                    .recv_from_many()
+                    .await
+                    .context("cannot receive from socket")?;
+                Ok::<_, anyhow::Error>(Evt::Incoming(packets.into_iter().map(|v| v.0).collect()))
             }
         };
         let up = async {
-            let raw_upload = session_back.next_outgoing().await.ok()?;
-            Some(Evt::Outgoing(raw_upload))
+            let raw_upload = session_back
+                .next_outgoing()
+                .await
+                .context("cannot read out of session_back")?;
+            Ok::<_, anyhow::Error>(Evt::Outgoing(raw_upload))
         };
 
         match smol::future::race(down, up).await {
-            Some(Evt::Incoming(bts)) => {
+            Ok(Evt::Incoming(bts)) => {
                 for bts in bts {
                     let _ = session_back.inject_incoming(&bts);
                 }
             }
-            Some(Evt::Outgoing(bts)) => {
+            Ok(Evt::Outgoing(bts)) => {
                 let bts: Bytes = bts;
                 let now = Instant::now();
-                if remind_ratelimit.check().is_ok() || !updated {
+                if last_remind
+                    .replace(Instant::now())
+                    .map(|f| f.elapsed() > Duration::from_secs(1))
+                    .unwrap_or_default()
+                    || !updated
+                {
                     updated = true;
                     let g_encrypt = crypt::LegacyAead::new(&cookie.generate_c2s().next().unwrap());
                     if let Some(reset_millis) = my_reset_millis {
@@ -204,7 +201,7 @@ async fn client_backhaul_once(
                                     loop {
                                         let bufs = old_socket.recv_from_many().await.ok()?;
                                         for (buf, _) in bufs {
-                                            drop(session_back.inject_incoming(&buf))
+                                            session_back.inject_incoming(&buf).ok()?
                                         }
                                     }
                                 }
@@ -236,7 +233,9 @@ async fn client_backhaul_once(
                     tracing::error!("error sending packet: {:?}", err)
                 }
             }
-            None => return None,
+            Err(err) => {
+                tracing::error!("error in down/up: {:?}", err);
+            }
         }
     }
 }

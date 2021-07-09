@@ -1,40 +1,54 @@
 use std::{collections::BTreeMap, net::SocketAddr, sync::Arc, time::Instant};
 
-use crate::SessionBack;
+use crate::{SVec, SessionBack};
 use bytes::Bytes;
-use indexmap::IndexMap;
 use parking_lot::RwLock;
+use rand::Rng;
+use rustc_hash::FxHashMap;
 
 pub struct ShardedAddrs {
-    map: IndexMap<u8, SocketAddr>,
-    index: usize,
-    last_time: Instant,
+    // maps shard ID to socketaddr and last update time
+    map: FxHashMap<u8, (SocketAddr, Instant)>,
 }
 
 impl ShardedAddrs {
+    /// Creates a new table of shard addresses.
     pub fn new(initial_shard: u8, initial_addr: SocketAddr) -> Self {
-        let mut map = IndexMap::new();
-        map.insert(initial_shard, initial_addr);
-        Self {
-            map,
-            index: 0,
-            last_time: Instant::now(),
+        let mut map = FxHashMap::default();
+        map.insert(initial_shard, (initial_addr, Instant::now()));
+        Self { map }
+    }
+
+    /// Gets the most appropriate address to send a packet down.
+    pub fn get_addr(&self) -> SocketAddr {
+        // svec to prevent allocating in such an extremely hot path
+        let recently_used_shards = self
+            .map
+            .iter()
+            .filter(|(_, (_, usage))| usage.elapsed().as_millis() < 1000)
+            .map(|f| f.1 .0)
+            .collect::<SVec<_>>();
+        // if no recently used, then push the most recently used one
+        if recently_used_shards.is_empty() {
+            let (most_recent, _) = self
+                .map
+                .values()
+                .max_by_key(|v| v.1)
+                .copied()
+                .expect("no shards at all");
+            tracing::debug!("sending down most recent {}", most_recent);
+            most_recent
+        } else {
+            let random =
+                recently_used_shards[rand::thread_rng().gen_range(0, recently_used_shards.len())];
+            tracing::debug!("sending down random {}", random);
+            random
         }
     }
 
-    pub fn get_addr(&mut self) -> SocketAddr {
-        if self.last_time.elapsed().as_millis() > 100 {
-            self.last_time = Instant::now();
-            *self.map.get_index(self.index).unwrap().1
-        } else {
-            loop {
-                self.last_time = Instant::now();
-                self.index = self.index.wrapping_add(1) % self.map.len();
-                if let Some(val) = self.map.get_index(self.index) {
-                    return *val.1;
-                }
-            }
-        }
+    /// Sets an index to a particular address
+    pub fn insert_addr(&mut self, index: u8, addr: SocketAddr) -> Option<SocketAddr> {
+        self.map.insert(index, (addr, Instant::now())).map(|v| v.0)
     }
 }
 
@@ -53,12 +67,7 @@ impl SessionTable {
     #[tracing::instrument(skip(self), level = "trace")]
     pub fn rebind(&mut self, addr: SocketAddr, shard_id: u8, token: Bytes) -> bool {
         if let Some(entry) = self.token_to_sess.get(&token) {
-            let old = {
-                let mut addrs = entry.addrs.write();
-                let old = addrs.map.insert(shard_id, addr);
-                addrs.index = addrs.map.get_index_of(&shard_id).unwrap();
-                old
-            };
+            let old = entry.addrs.write().insert_addr(shard_id, addr);
             tracing::trace!("binding {}=>{}", shard_id, addr);
             if let Some(old) = old {
                 self.addr_to_token.remove(&old);
@@ -73,7 +82,7 @@ impl SessionTable {
     #[tracing::instrument(skip(self), level = "trace")]
     pub fn delete(&mut self, token: Bytes) {
         if let Some(entry) = self.token_to_sess.remove(&token) {
-            for (_, addr) in entry.addrs.read().map.iter() {
+            for (addr, _) in entry.addrs.read().map.values() {
                 self.addr_to_token.remove(addr);
             }
         }
