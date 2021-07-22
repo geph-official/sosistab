@@ -201,7 +201,7 @@ async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<
     let mut fec_timer = smol::Timer::after(Duration::from_millis(FEC_TIMEOUT_MS));
     // Vector of "unfecked" frames.
     let mut unfecked: Vec<(u64, Bytes)> = Vec::new();
-    let mut fec_encoder = FrameEncoder::new(10); // around 4 percent
+    let mut fec_encoder = FrameEncoder::new(2); // around 1 percent
     let mut frame_no = 0;
     loop {
         // either we have something new to send, or the FEC timer expired.

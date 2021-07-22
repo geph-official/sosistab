@@ -234,7 +234,8 @@ async fn client_backhaul_once(
                 }
             }
             Err(err) => {
-                tracing::error!("error in down/up: {:?}", err);
+                tracing::error!("FATAL error in down/up: {:?}", err);
+                return;
             }
         }
     }
