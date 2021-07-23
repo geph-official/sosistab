@@ -1,5 +1,7 @@
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
+use smol::{future::Boxed, net::TcpStream};
+
 use crate::{runtime, tcp::TcpClientBackhaul, Session, StatsGatherer};
 
 mod inner;
@@ -41,10 +43,16 @@ impl ClientConfig {
             server_addr,
             server_pubkey: server_pk,
             backhaul_gen: match self.protocol {
-                Protocol::Tcp => Arc::new(move || {
-                    Arc::new(TcpClientBackhaul::new().add_remote_key(server_addr, server_pk))
+                Protocol::DirectTcp => Arc::new(move || {
+                    Arc::new(TcpClientBackhaul::new(None).add_remote_key(server_addr, server_pk))
                 }),
-                Protocol::Udp => Arc::new(|| {
+                Protocol::ProxiedTcp(cnctr) => Arc::new(move || {
+                    Arc::new(
+                        TcpClientBackhaul::new(Some(cnctr.clone()))
+                            .add_remote_key(server_addr, server_pk),
+                    )
+                }),
+                Protocol::DirectUdp => Arc::new(|| {
                     Arc::new(
                         runtime::new_udp_socket_bind("0.0.0.0:0".parse::<SocketAddr>().unwrap())
                             .unwrap(),
@@ -59,12 +67,19 @@ impl ClientConfig {
     }
 }
 
-/// Underlyiing protocol for a sosistab session.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// Underlying protocol for a sosistab session.
+#[derive(Clone)]
 pub enum Protocol {
-    Tcp,
-    Udp,
+    /// "Direct" TCP that does not go through a proxy.
+    DirectTcp,
+    /// "Proxied" TCP that instead calls a function that returns a TCP connection.
+    ProxiedTcp(Connector),
+    /// "Direct UDP that does not go through a proxy.
+    DirectUdp,
 }
+
+pub type Connector =
+    Arc<dyn Fn(SocketAddr) -> Boxed<std::io::Result<TcpStream>> + Send + Sync + 'static>;
 
 /// Connects to a remote server over UDP.
 #[deprecated]
@@ -99,7 +114,7 @@ pub async fn connect_tcp(
         server_addr,
         server_pubkey: pubkey,
         backhaul_gen: Arc::new(move || {
-            Arc::new(TcpClientBackhaul::new().add_remote_key(server_addr, pubkey))
+            Arc::new(TcpClientBackhaul::new(None).add_remote_key(server_addr, pubkey))
         }),
         num_shards: 16,
         reset_interval: None,

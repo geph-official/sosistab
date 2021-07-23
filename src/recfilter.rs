@@ -4,7 +4,7 @@ use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 
 // recently seen tracker
-pub struct RecentFilter {
+pub(crate) struct RecentFilter {
     curr_bloom: bloomfilter::Bloom<[u8]>,
     last_bloom: bloomfilter::Bloom<[u8]>,
     curr_time: Instant,
@@ -31,4 +31,5 @@ impl RecentFilter {
 }
 
 /// A global recent filter.
-pub static RECENT_FILTER: Lazy<Mutex<RecentFilter>> = Lazy::new(|| Mutex::new(RecentFilter::new()));
+pub(crate) static RECENT_FILTER: Lazy<Mutex<RecentFilter>> =
+    Lazy::new(|| Mutex::new(RecentFilter::new()));

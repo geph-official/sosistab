@@ -7,13 +7,14 @@ use std::{
     collections::VecDeque,
     convert::TryInto,
     net::{Shutdown, SocketAddr},
+    sync::Arc,
     time::{Duration, SystemTime},
 };
 
 use crate::{
     crypt::{triple_ecdh, Cookie, NgAead},
     protocol::HandshakeFrame,
-    runtime, Backhaul,
+    runtime, Backhaul, Connector,
 };
 use anyhow::Context;
 use smol_timeout::TimeoutExt;
@@ -27,11 +28,13 @@ pub struct TcpClientBackhaul {
     fake_addr: u128,
     incoming: Receiver<(Bytes, SocketAddr)>,
     send_incoming: Sender<(Bytes, SocketAddr)>,
+
+    connect: Connector,
 }
 
 impl TcpClientBackhaul {
     /// Creates a new TCP client backhaul.
-    pub fn new() -> Self {
+    pub fn new(connect: Option<Connector>) -> Self {
         // dummy here
         let (send_incoming, incoming) = smol::channel::unbounded();
         let fake_addr = rand::random::<u128>();
@@ -41,6 +44,9 @@ impl TcpClientBackhaul {
             fake_addr,
             incoming,
             send_incoming,
+            connect: connect.unwrap_or_else(move || {
+                Arc::new(move |addr| smol::net::TcpStream::connect(addr).boxed())
+            }),
         }
     }
 
@@ -84,7 +90,7 @@ impl TcpClientBackhaul {
                 .ok_or_else(|| anyhow::anyhow!("remote address doesn't have a public key"))?;
             let cookie = Cookie::new(pubkey);
             // first connect
-            let mut remote = smol::net::TcpStream::connect(addr).await?;
+            let mut remote = (self.connect)(addr).await?;
             remote.set_nodelay(true)?;
             // then we send a hello
             let init_c2s = cookie.generate_c2s().next().unwrap();
