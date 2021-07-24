@@ -69,7 +69,7 @@ impl Session {
             cfg.role,
         ));
 
-        let (send_decoded, recv_decoded) = smol::channel::bounded(1024);
+        let (send_decoded, recv_decoded) = smol::channel::unbounded();
         let (send_outgoing, recv_outgoing) = smol::channel::bounded(1024);
         let session_back = SessionBack {
             machine,

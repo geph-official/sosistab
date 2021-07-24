@@ -23,7 +23,7 @@ impl CongestionControl for Reno {
 
     fn mark_ack(&mut self) {
         tracing::trace!("ack => {:.2}", self.cwnd);
-        self.cwnd += self.incr / self.cwnd
+        self.cwnd += self.incr / self.cwnd()
     }
 
     fn mark_loss(&mut self) {

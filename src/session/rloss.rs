@@ -63,6 +63,7 @@ impl RecvLossCalc {
         for (key, val) in self.gap_seqnos.iter() {
             if now.saturating_duration_since(*val) > Duration::from_secs(1) {
                 torem.push(*key);
+                tracing::warn!("recv lost {}", key);
                 self.lost_count += 1.0;
             } else {
                 break;
@@ -81,7 +82,7 @@ impl RecvLossCalc {
             > self.window
             && self.good_count > 100.0
         {
-            self.loss_samples.push_back(dbg!(loss.into()));
+            self.loss_samples.push_back(loss.into());
             self.last_loss_update = now;
             self.lost_count = 0.0;
             self.good_count = 0.0;

@@ -279,7 +279,7 @@ impl ConnVars {
         .pending_unless(first_rto.is_some());
 
         let new_write = async {
-            // smol::Timer::at(self.next_pace_time).await;
+            smol::Timer::at(self.next_pace_time).await;
             while self.write_fragments.is_empty() {
                 let to_write = {
                     let mut bts = BytesMut::with_capacity(MSS);
