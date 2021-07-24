@@ -157,6 +157,11 @@ async fn client_backhaul_once(
                     .recv_from_many()
                     .await
                     .context("cannot receive from socket")?;
+                tracing::debug!(
+                    "received {} packets from {:?}",
+                    packets.len(),
+                    packets.get(0).map(|v| v.1)
+                );
                 Ok::<_, anyhow::Error>(Evt::Incoming(packets.into_iter().map(|v| v.0).collect()))
             }
         };

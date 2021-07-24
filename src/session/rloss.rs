@@ -81,7 +81,7 @@ impl RecvLossCalc {
             > self.window
             && self.good_count > 100.0
         {
-            self.loss_samples.push_back(loss.into());
+            self.loss_samples.push_back(dbg!(loss.into()));
             self.last_loss_update = now;
             self.lost_count = 0.0;
             self.good_count = 0.0;

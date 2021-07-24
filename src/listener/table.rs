@@ -25,7 +25,7 @@ impl ShardedAddrs {
         let recently_used_shards = self
             .map
             .iter()
-            .filter(|(_, (_, usage))| usage.elapsed().as_millis() < 1000)
+            .filter(|(_, (_, usage))| usage.elapsed().as_millis() < 10000)
             .map(|f| f.1 .0)
             .collect::<SVec<_>>();
         // if no recently used, then push the most recently used one
@@ -36,12 +36,12 @@ impl ShardedAddrs {
                 .max_by_key(|v| v.1)
                 .copied()
                 .expect("no shards at all");
-            tracing::debug!("sending down most recent {}", most_recent);
+            tracing::trace!("sending down most recent {}", most_recent);
             most_recent
         } else {
             let random =
                 recently_used_shards[rand::thread_rng().gen_range(0, recently_used_shards.len())];
-            tracing::debug!("sending down random {}", random);
+            tracing::trace!("sending down random {}", random);
             random
         }
     }

@@ -7,7 +7,13 @@ use bytes::{Bytes, BytesMut};
 use rustc_hash::FxHashSet;
 use smol::channel::Receiver;
 
-use crate::{mux::structs::*, safe_deserialize, MyFutureExt};
+use crate::{
+    mux::{
+        congestion::{CongestionControl, Cubic, Reno},
+        structs::*,
+    },
+    safe_deserialize, MyFutureExt,
+};
 
 use super::{
     bipe::{BipeReader, BipeWriter},
@@ -27,26 +33,14 @@ pub(crate) struct ConnVars {
 
     pub reorderer: Reorderer<Bytes>,
     pub lowest_unseen: Seqno,
-    // read_buffer: VecDeque<Bytes>,
-    slow_start: bool,
-    ssthresh: f64,
-    pub cwnd: f64,
-    last_loss: Instant,
-
-    flights: u64,
-    last_flight: Instant,
-
-    loss_rate: f64,
 
     closing: bool,
-
     write_fragments: VecDeque<Bytes>,
-
-    in_recovery: bool,
-
     next_pace_time: Instant,
-
     lost_seqnos: Vec<Seqno>,
+    last_loss: Option<Instant>,
+
+    cc: Box<dyn CongestionControl + Send>,
 }
 
 impl Default for ConnVars {
@@ -63,26 +57,15 @@ impl Default for ConnVars {
             reorderer: Reorderer::default(),
             lowest_unseen: 0,
 
-            slow_start: true,
-            cwnd: 64.0,
-            ssthresh: -500.0,
-            last_loss: Instant::now(),
-
-            flights: 0,
-            last_flight: Instant::now(),
-
-            loss_rate: 0.0,
-
             closing: false,
 
             write_fragments: VecDeque::new(),
 
-            in_recovery: false,
-
             next_pace_time: Instant::now(),
 
             lost_seqnos: Vec::new(),
-            // limiter: VarRateLimit::new(),
+            last_loss: None,
+            cc: Box::new(Cubic::new(0.7, 0.4)),
         }
     }
 }
@@ -113,11 +96,11 @@ impl ConnVars {
             Ok(ConnVarEvt::Retransmit(seqno)) => {
                 self.lost_seqnos.retain(|v| *v != seqno);
                 if let Some(msg) = self.inflight.retransmit(seqno) {
-                    tracing::debug!(
+                    tracing::trace!(
                         "** RETRANSMIT {} (inflight = {}, cwnd = {}, lost_count = {}) **",
                         seqno,
                         self.inflight.inflight(),
-                        self.cwnd as u64,
+                        self.cc.cwnd(),
                         self.inflight.lost_count(),
                     );
                     transmit(msg);
@@ -130,15 +113,22 @@ impl ConnVars {
                 Ok(())
             }
             Ok(ConnVarEvt::Rto(seqno)) => {
-                tracing::debug!(
+                tracing::trace!(
                     "** MARKING LOST {} (unacked = {}, inflight = {}, cwnd = {}, lost_count = {}) **",
                     seqno,
                     self.inflight.unacked(),
                     self.inflight.inflight(),
-                    self.cwnd as u64,
+                    self.cc.cwnd(),
                     self.inflight.lost_count(),
                 );
-                self.congestion_loss();
+                let now = Instant::now();
+                if let Some(old) = self.last_loss.replace(now) {
+                    if now.saturating_duration_since(old) > self.inflight.rto() {
+                        self.cc.mark_loss()
+                    }
+                } else {
+                    self.cc.mark_loss();
+                }
                 self.inflight.mark_lost(seqno);
                 self.lost_seqnos.push(seqno);
                 Ok(())
@@ -153,18 +143,14 @@ impl ConnVars {
                 ..
             })) => {
                 let seqnos = safe_deserialize::<Vec<Seqno>>(&payload)?;
-                tracing::debug!("new ACK pkt with {} seqnos", seqnos.len());
+                tracing::trace!("new ACK pkt with {} seqnos", seqnos.len());
                 for seqno in seqnos {
                     self.lost_seqnos.retain(|v| *v != seqno);
                     if self.inflight.mark_acked(seqno) {
-                        self.congestion_ack();
+                        self.cc.mark_ack();
                     }
                 }
                 self.inflight.mark_acked_lt(seqno);
-                let outstanding = self.inflight.unacked() - self.inflight.inflight();
-                if outstanding == 0 {
-                    self.in_recovery = false;
-                }
                 self.check_closed()?;
                 Ok(())
             }
@@ -264,10 +250,10 @@ impl ConnVars {
         // We don't want retransmissions to cause more than CWND packets in flight, any more do we let normal transmissions do so.
         // Thus, we must have a state where a packet is known to be lost, but is not yet retransmitted.
         let first_retrans = self.lost_seqnos.get(0).cloned();
-        let can_retransmit = self.inflight.inflight() <= self.cwnd as usize;
+        let can_retransmit = self.inflight.inflight() <= self.cc.cwnd();
         // If we've already closed the connection, we cannot write *new* packets
         let can_write_new =
-            can_retransmit && self.inflight.unacked() <= self.cwnd as usize && !self.closing;
+            can_retransmit && self.inflight.unacked() <= self.cc.cwnd() && !self.closing;
         let force_ack = self.ack_seqnos.len() >= ACK_BATCH;
         assert!(self.ack_seqnos.len() <= ACK_BATCH);
 
@@ -293,7 +279,7 @@ impl ConnVars {
         .pending_unless(first_rto.is_some());
 
         let new_write = async {
-            smol::Timer::at(self.next_pace_time).await;
+            // smol::Timer::at(self.next_pace_time).await;
             while self.write_fragments.is_empty() {
                 let to_write = {
                     let mut bts = BytesMut::with_capacity(MSS);
@@ -335,52 +321,6 @@ impl ConnVars {
 
     fn pacing_rate(&self) -> f64 {
         // calculate implicit rate
-        (self.cwnd / self.inflight.min_rtt().as_secs_f64()).max(200.0)
-    }
-
-    fn congestion_ack(&mut self) {
-        let now = Instant::now();
-        if now.saturating_duration_since(self.last_flight) > self.inflight.srtt() {
-            self.flights += 1;
-            self.last_flight = now
-        }
-        self.loss_rate *= 0.99;
-
-        let bic_inc = if self.cwnd < self.ssthresh {
-            (self.ssthresh - self.cwnd) / 2.0
-        } else {
-            self.cwnd - self.ssthresh
-        }
-        .max(2.0) // at least as fast as 2 Renos
-        .min(self.cwnd)
-        .min(128.0); // at most as fast as 128 Renos
-        self.cwnd += bic_inc / self.cwnd;
-    }
-
-    fn congestion_loss(&mut self) {
-        self.slow_start = false;
-        self.loss_rate = self.loss_rate * 0.99 + 0.01;
-        let now = Instant::now();
-        if !self.in_recovery && now.saturating_duration_since(self.last_loss) > self.inflight.rto()
-        {
-            self.in_recovery = true;
-            let beta = 0.125;
-            if self.cwnd < self.ssthresh {
-                self.ssthresh = self.cwnd * (2.0 - beta) / 2.0;
-            } else {
-                self.ssthresh = self.cwnd;
-            }
-
-            self.cwnd *= 1.0 - beta;
-            self.cwnd = self.cwnd.max(3.0);
-            tracing::debug!(
-                "LOSS CWND => {:.2}; loss rate {:.2}, srtt {}ms (var {}ms)",
-                self.cwnd,
-                self.loss_rate,
-                self.inflight.srtt().as_millis(),
-                self.inflight.rtt_var().as_millis(),
-            );
-            self.last_loss = now;
-        }
+        (self.cc.cwnd() as f64 / self.inflight.min_rtt().as_secs_f64()).max(200.0)
     }
 }

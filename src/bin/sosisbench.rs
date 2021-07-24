@@ -11,6 +11,7 @@ use once_cell::sync::Lazy;
 
 use rand_chacha::rand_core::SeedableRng;
 use smol::prelude::*;
+use sosistab::{ClientConfig, Protocol};
 
 #[derive(FromArgs, PartialEq, Debug)]
 /// Top level
@@ -104,10 +105,16 @@ async fn flood_main(args: FloodArgs) -> anyhow::Result<()> {
             loop {
                 let start = Instant::now();
                 eprintln!("connecting to {}...", server_addr);
-                let session = sosistab::connect_udp(server_addr, server_pk, Default::default())
-                    .await
-                    .context("cannot connect to sosistab")
-                    .unwrap();
+                let session = ClientConfig::new(
+                    Protocol::DirectUdp,
+                    server_addr,
+                    server_pk,
+                    Default::default(),
+                )
+                .connect()
+                .await
+                .context("cannot connect to sosistab")
+                .unwrap();
                 count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 eprintln!(
                     "spammed {} sessions (last {:?})",
@@ -125,13 +132,15 @@ async fn flood_main(args: FloodArgs) -> anyhow::Result<()> {
 async fn client_main(args: ClientArgs) -> anyhow::Result<()> {
     // smolscale::permanently_single_threaded();
     let start = Instant::now();
-    let session = sosistab::connect_udp(
+    let session = ClientConfig::new(
+        Protocol::DirectUdp,
         smol::net::resolve(&args.connect)
             .await
             .context("cannot resolve")?[0],
         (&*SNAKEOIL_SK).into(),
         Default::default(),
     )
+    .connect()
     .await
     .context("cannot connect to sosistab")?;
     eprintln!("Session established in {:?}", start.elapsed());

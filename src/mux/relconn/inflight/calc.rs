@@ -29,7 +29,8 @@ impl RttCalculator {
         // if over limit, decimate
         if self.rtt_measurements.len() > MAX_MEASUREMENTS {
             for i in 0..self.rtt_measurements.len() / 2 {
-                self.rtt_measurements[i] = self.rtt_measurements[i * 2]
+                self.rtt_measurements[i] =
+                    (self.rtt_measurements[i * 2] + self.rtt_measurements[i * 2 + 1]) / 2
             }
             self.rtt_measurements
                 .truncate(self.rtt_measurements.len() / 2)
@@ -49,7 +50,7 @@ impl RttCalculator {
     }
 
     pub fn rto(&self) -> Duration {
-        Duration::from_millis(*self.rtt_measurements.last().unwrap() + 40) + self.rtt_var()
+        Duration::from_millis(*self.rtt_measurements.last().unwrap() + 40) + self.rtt_var() * 2
     }
 
     pub fn srtt(&self) -> Duration {
