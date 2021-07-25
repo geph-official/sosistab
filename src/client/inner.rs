@@ -1,7 +1,6 @@
-use crate::crypt;
+use crate::{buffer::Buff, crypt};
 use crate::{protocol, runtime, Backhaul, Session, SessionBack, SessionConfig, StatsGatherer};
 use anyhow::Context;
-use bytes::Bytes;
 use rand::prelude::*;
 use smol::prelude::*;
 use std::{
@@ -95,7 +94,7 @@ const VERSION: u64 = 3;
 
 fn init_session(
     cookie: crypt::Cookie,
-    resume_token: Bytes,
+    resume_token: Buff,
     shared_sec: blake3::Hash,
     cfg: LowlevelClientConfig,
 ) -> Session {
@@ -126,7 +125,7 @@ fn init_session(
 #[allow(clippy::all)]
 async fn client_backhaul_once(
     cookie: crypt::Cookie,
-    resume_token: Bytes,
+    resume_token: Buff,
     session_back: Arc<SessionBack>,
     shard_id: u8,
     cfg: LowlevelClientConfig,
@@ -138,8 +137,8 @@ async fn client_backhaul_once(
 
     #[derive(Debug)]
     enum Evt {
-        Incoming(Vec<Bytes>),
-        Outgoing(Bytes),
+        Incoming(Vec<Buff>),
+        Outgoing(Buff),
     }
 
     let mut my_reset_millis = cfg.reset_interval.map(|interval| {
@@ -180,7 +179,7 @@ async fn client_backhaul_once(
                 }
             }
             Ok(Evt::Outgoing(bts)) => {
-                let bts: Bytes = bts;
+                let bts: Buff = bts;
                 let now = Instant::now();
                 if last_remind
                     .replace(Instant::now())

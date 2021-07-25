@@ -3,11 +3,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use bytes::{Bytes, BytesMut};
 use rustc_hash::FxHashSet;
 use smol::channel::Receiver;
 
 use crate::{
+    buffer::{Buff, BuffMut},
     mux::{
         congestion::{CongestionControl, Cubic, Reno},
         structs::*,
@@ -31,11 +31,11 @@ pub(crate) struct ConnVars {
     pub delayed_ack_timer: Option<Instant>,
     pub ack_seqnos: FxHashSet<Seqno>,
 
-    pub reorderer: Reorderer<Bytes>,
+    pub reorderer: Reorderer<Buff>,
     pub lowest_unseen: Seqno,
 
     closing: bool,
-    write_fragments: VecDeque<Bytes>,
+    write_fragments: VecDeque<Buff>,
     next_pace_time: Instant,
     lost_seqnos: Vec<Seqno>,
     last_loss: Option<Instant>,
@@ -77,7 +77,7 @@ enum ConnVarEvt {
     Rto(Seqno),
     Retransmit(Seqno),
     AckTimer,
-    NewWrite(Bytes),
+    NewWrite(Buff),
     NewPkt(Message),
     Closing,
 }
@@ -210,7 +210,7 @@ impl ConnVars {
                     kind: RelKind::DataAck,
                     stream_id,
                     seqno: self.lowest_unseen,
-                    payload: Bytes::copy_from_slice(&encoded_acks),
+                    payload: Buff::copy_from_slice(&encoded_acks),
                 });
                 self.ack_seqnos.clear();
 
@@ -282,7 +282,7 @@ impl ConnVars {
             smol::Timer::at(self.next_pace_time).await;
             while self.write_fragments.is_empty() {
                 let to_write = {
-                    let mut bts = BytesMut::with_capacity(MSS);
+                    let mut bts = BuffMut::new();
                     bts.extend_from_slice(&[0; MSS]);
                     let n = recv_write.read(&mut bts).await;
                     if let Ok(n) = n {

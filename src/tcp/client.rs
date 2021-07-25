@@ -1,4 +1,3 @@
-use bytes::Bytes;
 use dashmap::DashMap;
 use rustc_hash::FxHashMap;
 use smol::channel::{Receiver, Sender};
@@ -12,6 +11,7 @@ use std::{
 };
 
 use crate::{
+    buffer::Buff,
     crypt::{triple_ecdh, Cookie, NgAead},
     protocol::HandshakeFrame,
     runtime, Backhaul, Connector,
@@ -26,8 +26,8 @@ pub struct TcpClientBackhaul {
     dest_to_key: FxHashMap<SocketAddr, x25519_dalek::PublicKey>,
     conn_pool: DashMap<SocketAddr, VecDeque<(ObfsTcp, SystemTime)>>,
     fake_addr: u128,
-    incoming: Receiver<(Bytes, SocketAddr)>,
-    send_incoming: Sender<(Bytes, SocketAddr)>,
+    incoming: Receiver<(Buff, SocketAddr)>,
+    send_incoming: Sender<(Buff, SocketAddr)>,
 
     connect: Connector,
 }
@@ -134,7 +134,7 @@ impl TcpClientBackhaul {
                                 u16::from_be_bytes((&buffer[..2]).try_into().unwrap()) as usize;
                             down_conn.read_exact(&mut buffer[..length]).await?;
                             send_incoming
-                                .send((Bytes::copy_from_slice(&buffer[..length]), addr))
+                                .send((Buff::copy_from_slice(&buffer[..length]), addr))
                                 .await?;
                         }
                     };
@@ -157,7 +157,7 @@ impl TcpClientBackhaul {
 
 #[async_trait::async_trait]
 impl Backhaul for TcpClientBackhaul {
-    async fn send_to(&self, to_send: Bytes, dest: SocketAddr) -> std::io::Result<()> {
+    async fn send_to(&self, to_send: Buff, dest: SocketAddr) -> std::io::Result<()> {
         if to_send.len() > 2048 {
             tracing::warn!("refusing to send packet of length {}", to_send.len());
             return Ok(());
@@ -192,7 +192,7 @@ impl Backhaul for TcpClientBackhaul {
         Ok(())
     }
 
-    async fn recv_from(&self) -> std::io::Result<(Bytes, SocketAddr)> {
+    async fn recv_from(&self) -> std::io::Result<(Buff, SocketAddr)> {
         Ok(self.incoming.recv().await.unwrap())
     }
 }

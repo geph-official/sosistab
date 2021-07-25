@@ -1,7 +1,8 @@
-use bytes::{Bytes, BytesMut};
 use probability::distribution::Distribution;
 
 use rustc_hash::FxHashMap;
+
+use crate::buffer::{Buff, BuffMut};
 
 use super::{pre_encode, wrapped::WrappedReedSolomon};
 
@@ -26,11 +27,11 @@ impl FrameEncoder {
 
     /// Encodes a slice of packets into more packets.
     #[tracing::instrument(level = "trace", skip(pkts))]
-    pub fn encode(&mut self, measured_loss: u8, pkts: &[Bytes]) -> Vec<Bytes> {
+    pub fn encode(&mut self, measured_loss: u8, pkts: &[Buff]) -> Vec<Buff> {
         // max length
         let max_length = pkts.iter().map(|v| v.len()).max().unwrap();
         // first we precode the packets
-        let mut padded_pkts: Vec<BytesMut> =
+        let mut padded_pkts: Vec<BuffMut> =
             pkts.iter().map(|p| pre_encode(p, max_length + 2)).collect();
         // then we get an encoder for this size
         let data_shards = pkts.len();
@@ -58,7 +59,7 @@ impl FrameEncoder {
         }
         // return
         let mut toret = Vec::with_capacity(data_shards + parity_shards);
-        toret.extend(padded_pkts.iter().map(|vec| Bytes::copy_from_slice(&vec)));
+        toret.extend(padded_pkts.iter().map(|vec| Buff::copy_from_slice(&vec)));
         toret
     }
 

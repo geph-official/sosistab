@@ -2,7 +2,6 @@ use std::{convert::TryInto, time::Duration};
 
 use async_dup::Arc;
 
-use bytes::Bytes;
 use c2_chacha::{stream_cipher::NewStreamCipher, stream_cipher::SyncStreamCipher, ChaCha8};
 
 use parking_lot::Mutex;
@@ -15,7 +14,7 @@ pub use client::*;
 mod server;
 pub use server::*;
 
-use crate::crypt::NgAead;
+use crate::{buffer::Buff, crypt::NgAead};
 
 const CONN_LIFETIME: Duration = Duration::from_secs(600);
 
@@ -91,7 +90,7 @@ impl ObfsTcp {
 async fn read_encrypted<R: AsyncRead + Unpin>(
     decrypt: NgAead,
     rdr: &mut R,
-) -> anyhow::Result<Bytes> {
+) -> anyhow::Result<Buff> {
     // read the length first
     let mut length_buf = vec![0u8; NgAead::overhead() + 2];
     rdr.read_exact(&mut length_buf).await?;

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use bytes::Bytes;
+use crate::buffer::Buff;
 
 use super::{post_decode, wrapped::WrappedReedSolomon};
 
@@ -34,11 +34,11 @@ impl FrameDecoder {
     }
 
     #[tracing::instrument(level = "trace", skip(self, pkt))]
-    pub fn decode(&mut self, pkt: &[u8], pkt_idx: usize) -> Option<Vec<Bytes>> {
+    pub fn decode(&mut self, pkt: &[u8], pkt_idx: usize) -> Option<Vec<Buff>> {
         // if we don't have parity shards, don't touch anything
         if self.parity_shards == 0 {
             self.done = true;
-            return Some(vec![post_decode(Bytes::copy_from_slice(pkt))?]);
+            return Some(vec![post_decode(Buff::copy_from_slice(pkt))?]);
         }
         if self.space.is_empty() {
             tracing::trace!("decode with pad len {}", pkt.len());
@@ -62,7 +62,7 @@ impl FrameDecoder {
         self.present[pkt_idx] = true;
         // if I'm a data shard, just return it
         if pkt_idx < self.data_shards {
-            return Some(vec![post_decode(Bytes::copy_from_slice(
+            return Some(vec![post_decode(Buff::copy_from_slice(
                 &self.space[pkt_idx],
             ))?]);
         }
@@ -91,7 +91,7 @@ impl FrameDecoder {
             .take(self.data_shards)
             .filter_map(|(elem, present)| {
                 if !present {
-                    post_decode(Bytes::copy_from_slice(&elem))
+                    post_decode(Buff::copy_from_slice(&elem))
                 } else {
                     None
                 }

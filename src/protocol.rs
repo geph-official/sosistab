@@ -1,6 +1,9 @@
+use std::ops::DerefMut;
+
 use bincode::Options;
-use bytes::Bytes;
 use serde::{Deserialize, Serialize};
+
+use crate::buffer::{Buff, BuffMut};
 
 /// Frame sent as a session-negotiation message. This is always encrypted with the cookie.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -16,13 +19,13 @@ pub enum HandshakeFrame {
         long_pk: x25519_dalek::PublicKey,
         eph_pk: x25519_dalek::PublicKey,
         /// This value includes all the info required to reconstruct a session, encrypted under a secret key only the server knows.
-        resume_token: Bytes,
+        resume_token: Buff,
     },
 
     /// Frame sent from client to server to either signal roaming, or complete an initial handshake. This is globally encrypted.
     /// Clients should send a ClientResume every time they suspect that their IP has changed.
     ClientResume {
-        resume_token: Bytes,
+        resume_token: Buff,
         /// Which shard is this
         shard_id: u8,
     },
@@ -53,7 +56,7 @@ pub enum DataFrameV2 {
         /// Total delivered frames
         total_recv_frames: u64,
         /// Body
-        body: Bytes,
+        body: Buff,
     },
     Parity {
         data_frame_first: u64,
@@ -61,19 +64,20 @@ pub enum DataFrameV2 {
         parity_count: u8,
         parity_index: u8,
         pad_size: usize,
-        body: Bytes,
+        body: Buff,
     },
 }
 
 impl DataFrameV2 {
     /// Pads the frame to prepare for encryption.
-    pub fn pad(&self, hidden_data: u8) -> Bytes {
+    pub fn pad(&self, hidden_data: u8) -> Buff {
         let options = bincode::DefaultOptions::new()
             .with_little_endian()
             .with_varint_encoding()
             .allow_trailing_bytes();
         // TODO: padding
-        let mut toret = options.serialize(self).unwrap();
+        let mut toret = BuffMut::new();
+        options.serialize_into(toret.deref_mut(), self).unwrap();
         toret.extend_from_slice(&[hidden_data]);
         toret.extend_from_slice(&vec![0xff; rand::random::<usize>() % 16]);
         toret.into()
@@ -111,5 +115,5 @@ pub struct DataFrameV1 {
     /// Total delivered frames
     pub total_recv_frames: u64,
     /// Body.
-    pub body: Bytes,
+    pub body: Buff,
 }

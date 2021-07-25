@@ -1,19 +1,19 @@
-use bytes::Bytes;
-
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
+
+use crate::buffer::Buff;
 
 /// A sequence number.
 pub type Seqno = u64;
 /// A message.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Message {
-    Urel(Bytes),
+    Urel(Buff),
     Rel {
         kind: RelKind,
         stream_id: u16,
         seqno: Seqno,
-        payload: Bytes,
+        payload: Buff,
     },
     Empty,
 }

@@ -1,17 +1,15 @@
+use crate::tcp::TcpServerBackhaul;
 use crate::{
     backhaul::{Backhaul, StatsBackhaul},
     crypt::{triple_ecdh, Cookie, LegacyAead},
     protocol::HandshakeFrame,
     runtime, safe_deserialize, Role,
 };
+use crate::{buffer::Buff, protocol::HandshakeFrame::*};
 use crate::{
     recfilter::RECENT_FILTER,
     session::{Session, SessionConfig},
 };
-use bytes::Bytes;
-
-use crate::protocol::HandshakeFrame::*;
-use crate::tcp::TcpServerBackhaul;
 use parking_lot::RwLock;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -167,8 +165,8 @@ impl ListenerActor {
 
         // two possible events
         enum Evt {
-            NewRecv((Bytes, SocketAddr)),
-            DeadSess(Bytes),
+            NewRecv((Buff, SocketAddr)),
+            DeadSess(Buff),
         }
 
         loop {
@@ -237,7 +235,7 @@ impl ListenerActor {
         handshake: HandshakeFrame,
         s2c_key: [u8; 32],
         addr: SocketAddr,
-        send_dead: Sender<Bytes>,
+        send_dead: Sender<Buff>,
         accepted: Sender<Session>,
     ) {
         match handshake {
@@ -253,10 +251,9 @@ impl ListenerActor {
                 // generate session key
                 let my_eph_sk = x25519_dalek::StaticSecret::new(&mut rand::thread_rng());
                 let token = TokenInfo {
-                    sess_key: triple_ecdh(&self.long_sk, &my_eph_sk, &long_pk, &eph_pk)
-                        .as_bytes()
-                        .to_vec()
-                        .into(),
+                    sess_key: Buff::copy_from_slice(
+                        triple_ecdh(&self.long_sk, &my_eph_sk, &long_pk, &eph_pk).as_bytes(),
+                    ),
                     init_time_ms: std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap()
@@ -350,7 +347,7 @@ impl ListenerActor {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TokenInfo {
-    sess_key: Bytes,
+    sess_key: Buff,
     init_time_ms: u64,
     version: u64,
 }
@@ -363,7 +360,7 @@ impl TokenInfo {
         safe_deserialize(&plain).ok()
     }
 
-    fn encrypt(&self, key: &[u8]) -> Bytes {
+    fn encrypt(&self, key: &[u8]) -> Buff {
         let crypter = LegacyAead::new(key);
         let mut rng = rand::thread_rng();
         crypter.encrypt(

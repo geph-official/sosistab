@@ -1,5 +1,4 @@
 use anyhow::Context;
-use bytes::Bytes;
 use dashmap::DashMap;
 use smol::prelude::*;
 use smol::{
@@ -14,6 +13,7 @@ use std::{
 };
 
 use crate::{
+    buffer::Buff,
     crypt::{triple_ecdh, Cookie, NgAead},
     protocol::HandshakeFrame,
     recfilter::RECENT_FILTER,
@@ -25,7 +25,7 @@ use super::{write_encrypted, ObfsTcp, CONN_LIFETIME, TCP_DN_KEY, TCP_UP_KEY};
 /// A TCP-based backhaul, server-side.
 pub struct TcpServerBackhaul {
     down_table: Arc<DownTable>,
-    recv_upcoming: Receiver<(Bytes, SocketAddr)>,
+    recv_upcoming: Receiver<(Buff, SocketAddr)>,
     _task: smol::Task<()>,
 }
 
@@ -50,11 +50,11 @@ impl TcpServerBackhaul {
 
 #[async_trait::async_trait]
 impl Backhaul for TcpServerBackhaul {
-    async fn recv_from(&self) -> std::io::Result<(Bytes, SocketAddr)> {
+    async fn recv_from(&self) -> std::io::Result<(Buff, SocketAddr)> {
         Ok(self.recv_upcoming.recv().await.unwrap())
     }
 
-    async fn send_to(&self, to_send: Bytes, dest: SocketAddr) -> std::io::Result<()> {
+    async fn send_to(&self, to_send: Buff, dest: SocketAddr) -> std::io::Result<()> {
         self.down_table.send_to(to_send, dest);
         Ok(())
     }
@@ -64,7 +64,7 @@ async fn backhaul_loop(
     listener: TcpListener,
     seckey: x25519_dalek::StaticSecret,
     down_table: Arc<DownTable>,
-    send_upcoming: Sender<(Bytes, SocketAddr)>,
+    send_upcoming: Sender<(Buff, SocketAddr)>,
 ) -> anyhow::Result<()> {
     loop {
         let (client, _) = listener.accept().await?;
@@ -92,7 +92,7 @@ async fn backhaul_one(
     mut client: TcpStream,
     seckey: x25519_dalek::StaticSecret,
     down_table: Arc<DownTable>,
-    send_upcoming: Sender<(Bytes, SocketAddr)>,
+    send_upcoming: Sender<(Buff, SocketAddr)>,
 ) -> anyhow::Result<()> {
     let cookie = Cookie::new((&seckey).into());
     // read the initial length
@@ -133,7 +133,7 @@ async fn backhaul_one(
                 let response = HandshakeFrame::ServerHello {
                     long_pk: (&seckey).into(),
                     eph_pk: (&my_eph_sk).into(),
-                    resume_token: Bytes::new(),
+                    resume_token: Buff::new(),
                 };
                 write_encrypted(s2c_enc, &response.to_bytes(), &mut client).await?;
                 let ss = triple_ecdh(&seckey, &my_eph_sk, &long_pk, &eph_pk);
@@ -156,7 +156,7 @@ async fn backhaul_one_inner(
     obfs_tcp: ObfsTcp,
     addr: SocketAddr,
     down_table: &DownTable,
-    send_upcoming: &Sender<(Bytes, SocketAddr)>,
+    send_upcoming: &Sender<(Buff, SocketAddr)>,
 ) -> anyhow::Result<()> {
     let (send_down, recv_down) = smol::channel::bounded(100);
     let up_loop = async {
@@ -174,7 +174,7 @@ async fn backhaul_one_inner(
             }
             obfs_tcp.read_exact(&mut buff[..length]).await?;
             send_upcoming
-                .send((Bytes::copy_from_slice(&buff[..length]), addr))
+                .send((Buff::copy_from_slice(&buff[..length]), addr))
                 .await?;
         }
     };
@@ -198,12 +198,12 @@ async fn backhaul_one_inner(
 #[derive(Default)]
 struct DownTable {
     /// maps fake IPv6 addresses (u128, 0) back through a channel to a connection actor. only keeps track of the connection that had the *latest* activity.
-    mapping: DashMap<SocketAddr, (Sender<Bytes>, Instant)>,
+    mapping: DashMap<SocketAddr, (Sender<Buff>, Instant)>,
 }
 
 impl DownTable {
     /// Creates/overwrites a new entry in the table.
-    fn set(&self, addr: SocketAddr, sender: Sender<Bytes>) {
+    fn set(&self, addr: SocketAddr, sender: Sender<Buff>) {
         if rand::random::<usize>() % self.mapping.len().max(1000) == 0 {
             self.gc()
         }
@@ -216,7 +216,7 @@ impl DownTable {
     }
 
     /// Sends something to a socketaddr. Silently drops on error.
-    fn send_to(&self, msg: Bytes, dest: SocketAddr) {
+    fn send_to(&self, msg: Buff, dest: SocketAddr) {
         if let Some(val) = self.mapping.get(&dest) {
             let _ = val.value().0.try_send(msg);
         }

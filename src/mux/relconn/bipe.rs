@@ -1,8 +1,9 @@
-use bytes::Bytes;
 use parking_lot::Mutex;
 use smol::future::Future;
 use smol::prelude::*;
 use std::{collections::VecDeque, pin::Pin, sync::Arc, task::Context, task::Poll};
+
+use crate::buffer::Buff;
 
 /// Create a "bipe". Use async_dup's methods if you want something cloneable/shareable
 pub fn bipe(capacity: usize) -> (BipeWriter, BipeReader) {
@@ -25,14 +26,14 @@ pub fn bipe(capacity: usize) -> (BipeWriter, BipeReader) {
 
 #[derive(Default)]
 struct BipeQueue {
-    inner: VecDeque<Bytes>,
+    inner: VecDeque<Buff>,
     closed: bool,
     counter: usize,
 }
 
 impl BipeQueue {
     fn push(&mut self, bts: &[u8]) {
-        self.inner.push_front(Bytes::copy_from_slice(bts));
+        self.inner.push_front(Buff::copy_from_slice(bts));
         self.counter += bts.len()
     }
 

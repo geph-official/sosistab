@@ -11,7 +11,7 @@ use once_cell::sync::Lazy;
 
 use rand_chacha::rand_core::SeedableRng;
 use smol::prelude::*;
-use sosistab::{ClientConfig, Protocol};
+use sosistab::{Buff, ClientConfig, Protocol};
 
 #[derive(FromArgs, PartialEq, Debug)]
 /// Top level
@@ -121,7 +121,10 @@ async fn flood_main(args: FloodArgs) -> anyhow::Result<()> {
                     count.load(std::sync::atomic::Ordering::Relaxed),
                     start.elapsed()
                 );
-                session.send_bytes(vec![0u8; 10000].into()).await.unwrap();
+                session
+                    .send_bytes(Buff::copy_from_slice(&[0u8; 10000]))
+                    .await
+                    .unwrap();
             }
         })
         .detach();

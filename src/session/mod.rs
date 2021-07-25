@@ -1,8 +1,6 @@
-use crate::fec::FrameEncoder;
+use crate::{buffer::Buff, fec::FrameEncoder};
 use crate::{crypt::AeadError, mux::Multiplex, runtime, StatsGatherer};
 use crate::{crypt::NgAead, protocol::DataFrameV2};
-use bytes::Bytes;
-
 use machine::RecvMachine;
 use parking_lot::Mutex;
 use rloss::RecvLossCalc;
@@ -40,8 +38,8 @@ pub enum SessionError {
 ///
 /// [Session] should be used directly only if an unreliable connection is all you need. For most applications, use [Multiplex](crate::mux::Multiplex), which wraps a [Session] and provides QUIC-like reliable streams as well as unreliable messages, all multiplexed over a single [Session].
 pub struct Session {
-    send_tosend: Sender<Bytes>,
-    recv_decoded: Receiver<Bytes>,
+    send_tosend: Sender<Buff>,
+    recv_decoded: Receiver<Buff>,
     statistics: Arc<StatsGatherer>,
     dropper: Vec<Box<dyn FnOnce() + Send + Sync + 'static>>,
     _task: smol::Task<()>,
@@ -107,8 +105,9 @@ impl Session {
         self.dropper.push(Box::new(thing))
     }
 
-    /// Takes a [Bytes] to be sent and stuffs it into the session.
-    pub async fn send_bytes(&self, to_send: Bytes) -> Result<(), SessionError> {
+    /// Takes a [Buff] to be sent and stuffs it into the session.
+    pub async fn send_bytes(&self, to_send: impl Into<Buff>) -> Result<(), SessionError> {
+        let to_send: Buff = to_send.into();
         self.statistics
             .increment("total_sent_bytes", to_send.len() as f32);
         if self.send_tosend.send(to_send).await.is_err() {
@@ -120,7 +119,7 @@ impl Session {
     }
 
     /// Waits until the next application input is decoded by the session.
-    pub async fn recv_bytes(&self) -> Result<Bytes, SessionError> {
+    pub async fn recv_bytes(&self) -> Result<Buff, SessionError> {
         let recv = self
             .recv_decoded
             .recv()
@@ -140,8 +139,8 @@ impl Session {
 /// "Back side" of a Session.
 pub(crate) struct SessionBack {
     machine: Mutex<RecvMachine>,
-    send_decoded: Sender<Bytes>,
-    recv_outgoing: Receiver<Bytes>,
+    send_decoded: Sender<Buff>,
+    recv_outgoing: Receiver<Buff>,
 }
 
 impl SessionBack {
@@ -157,7 +156,7 @@ impl SessionBack {
     }
 
     /// Wait for an outgoing packet from the session.
-    pub async fn next_outgoing(&self) -> Result<Bytes, SessionError> {
+    pub async fn next_outgoing(&self) -> Result<Buff, SessionError> {
         self.recv_outgoing
             .recv()
             .await
@@ -171,9 +170,9 @@ struct SessionSendCtx {
     statg: Arc<StatsCalculator>,
     gather: Arc<StatsGatherer>,
     rloss: Arc<Mutex<RecvLossCalc>>,
-    recv_tosend: Receiver<Bytes>,
+    recv_tosend: Receiver<Buff>,
     send_crypt: NgAead,
-    send_outgoing: Sender<Bytes>,
+    send_outgoing: Sender<Buff>,
 }
 
 // #[tracing::instrument(skip(ctx))]
@@ -191,7 +190,7 @@ const BURST_SIZE: usize = 40;
 #[tracing::instrument(skip(ctx))]
 async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<()> {
     enum Event {
-        NewPayload(Bytes),
+        NewPayload(Buff),
         FecTimeout,
     }
 
@@ -200,7 +199,7 @@ async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<
     // FEC timer: when this expires, send parity packets regardless if we have assembled BURST_SIZE data packets.
     let mut fec_timer = smol::Timer::after(Duration::from_millis(FEC_TIMEOUT_MS));
     // Vector of "unfecked" frames.
-    let mut unfecked: Vec<(u64, Bytes)> = Vec::new();
+    let mut unfecked: Vec<(u64, Buff)> = Vec::new();
     let mut fec_encoder = FrameEncoder::new(2); // around 1 percent
     let mut frame_no = 0;
     loop {

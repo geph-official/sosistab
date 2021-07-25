@@ -1,5 +1,4 @@
-use crate::*;
-use bytes::Bytes;
+use crate::{buffer::Buff, runtime, Session};
 use smol::channel::{Receiver, Sender};
 use std::sync::Arc;
 mod congestion;
@@ -10,8 +9,8 @@ pub use relconn::RelConn;
 
 /// A multiplex session over a sosistab session, implementing both reliable "streams" and unreliable messages.
 pub struct Multiplex {
-    urel_send: Sender<Bytes>,
-    urel_recv: Receiver<Bytes>,
+    urel_send: Sender<Buff>,
+    urel_recv: Receiver<Buff>,
     conn_open: Sender<(Option<String>, Sender<RelConn>)>,
     conn_accept: Receiver<RelConn>,
     send_session: Sender<Arc<Session>>,
@@ -54,19 +53,19 @@ impl Multiplex {
     }
 
     /// Sends an unreliable message to the other side
-    #[tracing::instrument(skip(self), level = "trace")]
-    pub async fn send_urel(&self, msg: Bytes) -> std::io::Result<()> {
-        self.urel_send.send(msg).await.map_err(to_ioerror)
+    #[tracing::instrument(skip(self, msg), level = "trace")]
+    pub async fn send_urel(&self, msg: impl Into<Buff>) -> std::io::Result<()> {
+        self.urel_send.send(msg.into()).await.map_err(to_ioerror)
     }
 
     /// Receive an unreliable message
     #[tracing::instrument(skip(self), level = "trace")]
-    pub async fn recv_urel(&self) -> std::io::Result<Bytes> {
+    pub async fn recv_urel(&self) -> std::io::Result<Buff> {
         self.urel_recv.recv().await.map_err(to_ioerror)
     }
 
     /// Receive an unreliable message if there is one available.
-    pub fn try_recv_urel(&self) -> std::io::Result<Bytes> {
+    pub fn try_recv_urel(&self) -> std::io::Result<Buff> {
         self.urel_recv.try_recv().map_err(to_ioerror)
     }
 

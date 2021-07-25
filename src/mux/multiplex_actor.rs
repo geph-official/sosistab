@@ -1,11 +1,13 @@
-use bytes::Bytes;
 use dashmap::DashMap;
 use rand::prelude::*;
 use smol::channel::{Receiver, Sender};
 use smol::prelude::*;
-use std::{sync::Arc, time::Duration};
+use std::{ops::DerefMut, sync::Arc, time::Duration};
 
-use crate::{runtime, safe_deserialize, RelConn, Session};
+use crate::{
+    buffer::{Buff, BuffMut},
+    runtime, safe_deserialize, RelConn, Session,
+};
 
 use super::{
     relconn::{RelConnBack, RelConnState},
@@ -14,8 +16,8 @@ use super::{
 
 pub async fn multiplex(
     recv_session: Receiver<Arc<Session>>,
-    urel_send_recv: Receiver<Bytes>,
-    urel_recv_send: Sender<Bytes>,
+    urel_send_recv: Receiver<Buff>,
+    urel_recv_send: Sender<Buff>,
     conn_open_recv: Receiver<(Option<String>, Sender<RelConn>)>,
     conn_accept_send: Sender<RelConn>,
 ) -> anyhow::Result<()> {
@@ -131,7 +133,7 @@ pub async fn multiplex(
                                 kind: RelKind::Syn,
                                 stream_id,
                                 seqno: 0,
-                                payload: Bytes::copy_from_slice(
+                                payload: Buff::copy_from_slice(
                                     additional_data.clone().unwrap_or_default().as_bytes(),
                                 ),
                             })
@@ -141,8 +143,10 @@ pub async fn multiplex(
                 .detach();
             }
             Event::SendMsg(msg) => {
-                let msg = bincode::serialize(&msg).unwrap();
-                session.send_bytes(msg.into()).await?;
+                let mut to_send = BuffMut::new();
+                let r: &mut Vec<u8> = &mut to_send;
+                bincode::serialize_into(r, &msg).unwrap();
+                session.send_bytes(to_send.freeze()).await?;
             }
             Event::RecvMsg(msg) => {
                 match msg {
@@ -162,18 +166,15 @@ pub async fn multiplex(
                     } => {
                         if conn_tab.get_stream(stream_id).is_some() {
                             tracing::trace!("syn recv {} REACCEPT", stream_id);
-                            session
-                                .send_bytes(
-                                    bincode::serialize(&Message::Rel {
-                                        kind: RelKind::SynAck,
-                                        stream_id,
-                                        seqno: 0,
-                                        payload: Bytes::new(),
-                                    })
-                                    .unwrap()
-                                    .into(),
-                                )
-                                .await?;
+                            let msg = Message::Rel {
+                                kind: RelKind::SynAck,
+                                stream_id,
+                                seqno: 0,
+                                payload: Buff::copy_from_slice(&[]),
+                            };
+                            let mut bts = BuffMut::new();
+                            bincode::serialize_into(bts.deref_mut(), &msg).unwrap();
+                            session.send_bytes(bts.freeze()).await?;
                         } else {
                             tracing::trace!("syn recv {} ACCEPT", stream_id);
                             let lala = String::from_utf8_lossy(&payload).to_string();
@@ -202,18 +203,15 @@ pub async fn multiplex(
                         } else {
                             tracing::trace!("discarding {:?} to nonexistent {}", kind, stream_id);
                             if kind != RelKind::Rst {
-                                session
-                                    .send_bytes(
-                                        bincode::serialize(&Message::Rel {
-                                            kind: RelKind::Rst,
-                                            stream_id,
-                                            seqno: 0,
-                                            payload: Bytes::new(),
-                                        })
-                                        .unwrap()
-                                        .into(),
-                                    )
-                                    .await?;
+                                let msg = Message::Rel {
+                                    kind: RelKind::Rst,
+                                    stream_id,
+                                    seqno: 0,
+                                    payload: Buff::copy_from_slice(&[]),
+                                };
+                                let mut buf = BuffMut::new();
+                                bincode::serialize_into(buf.deref_mut(), &msg).unwrap();
+                                session.send_bytes(buf.freeze()).await?;
                             }
                         }
                     }

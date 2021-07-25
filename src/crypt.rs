@@ -1,5 +1,4 @@
 use bincode::{DefaultOptions, Options};
-use bytes::{Bytes, BytesMut};
 use c2_chacha::stream_cipher::{NewStreamCipher, SyncStreamCipher};
 use c2_chacha::ChaCha12;
 use rand::prelude::*;
@@ -8,6 +7,8 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::{sync::Arc, time::SystemTime};
 use thiserror::Error;
+
+use crate::buffer::{Buff, BuffMut};
 
 pub const UP_KEY: &[u8; 32] = b"upload--------------------------";
 pub const DN_KEY: &[u8; 32] = b"download------------------------";
@@ -31,7 +32,7 @@ impl LegacyAead {
     }
 
     /// Encrypts a message, given a nonce.
-    pub fn encrypt(&self, msg: &[u8], nonce: u128) -> Bytes {
+    pub fn encrypt(&self, msg: &[u8], nonce: u128) -> Buff {
         // overwrite first 128 bits of key
         let mut chacha_key = self.chacha_key;
         let mut blake3_key = self.blake3_key;
@@ -39,7 +40,7 @@ impl LegacyAead {
         (&mut chacha_key[0..16]).copy_from_slice(&nonce);
         (&mut blake3_key[0..16]).copy_from_slice(&nonce);
         // chacha8 encryption
-        let mut out_space = BytesMut::with_capacity(msg.len() + 24);
+        let mut out_space = BuffMut::new();
         out_space.extend_from_slice(msg);
         let mut chacha = ChaCha12::new_var(&chacha_key, &[0; 8]).expect("can't make chacha12");
         chacha.apply_keystream(&mut out_space[..msg.len()]);
@@ -52,7 +53,7 @@ impl LegacyAead {
     }
 
     /// Decrypts a message. Returns None if there's an error. Intentionally does not discriminate between different errors to limit possible side channels.
-    pub fn decrypt(&self, msg: &[u8]) -> Option<Bytes> {
+    pub fn decrypt(&self, msg: &[u8]) -> Option<Buff> {
         if msg.len() < 24 {
             return None;
         }
@@ -65,7 +66,7 @@ impl LegacyAead {
         (&mut chacha_key[0..16]).copy_from_slice(&nonce);
         (&mut blake3_key[0..16]).copy_from_slice(&nonce);
         // decrypt
-        let mut out_space = BytesMut::with_capacity(msg.len());
+        let mut out_space = BuffMut::new();
         out_space.extend_from_slice(ciphertext);
         let mut chacha = ChaCha12::new_var(&chacha_key, &[0; 8]).expect("can't make chacha12");
         // check mac
@@ -79,7 +80,7 @@ impl LegacyAead {
     }
 
     /// Pad and encrypt.
-    pub fn pad_encrypt_v1(&self, msgs: &[impl Serialize], target_len: usize) -> Bytes {
+    pub fn pad_encrypt_v1(&self, msgs: &[impl Serialize], target_len: usize) -> Buff {
         let mut target_len = rand::thread_rng().gen_range(0, target_len);
         let mut plain = Vec::with_capacity(1500);
         for msg in msgs {
@@ -139,35 +140,30 @@ impl NgAead {
     }
 
     /// Encrypts a message with a random nonce.
-    pub fn encrypt(&self, msg: &[u8]) -> Bytes {
+    pub fn encrypt(&self, msg: &[u8]) -> Buff {
         let mut nonce = [0; 12];
         rand::thread_rng().fill_bytes(&mut nonce);
         // make an output. it starts out containing the plaintext.
-        let mut output = Vec::with_capacity(
-            msg.len() + CHACHA20_POLY1305.nonce_len() + CHACHA20_POLY1305.tag_len(),
-        );
+        let mut output = BuffMut::new();
         output.extend_from_slice(&msg);
+        let lala: &mut Vec<_> = &mut output;
         // now we overwrite it
         self.key
-            .seal_in_place_append_tag(
-                Nonce::assume_unique_for_key(nonce),
-                Aad::empty(),
-                &mut output,
-            )
+            .seal_in_place_append_tag(Nonce::assume_unique_for_key(nonce), Aad::empty(), lala)
             .unwrap();
         output.extend_from_slice(&nonce);
         output.into()
     }
 
     /// Decrypts a message.
-    pub fn decrypt(&self, ctext: &[u8]) -> Result<Bytes, AeadError> {
+    pub fn decrypt(&self, ctext: &[u8]) -> Result<Buff, AeadError> {
         if ctext.len() < CHACHA20_POLY1305.nonce_len() + CHACHA20_POLY1305.tag_len() {
             return Err(AeadError::BadLength);
         }
         // nonce is last 12 bytes
         let (ctext, nonce) = ctext.split_at(ctext.len() - CHACHA20_POLY1305.nonce_len());
         // we now open
-        let mut ctext = ctext.to_vec();
+        let mut ctext = BuffMut::copy_from_slice(&ctext);
         self.key
             .open_in_place(
                 Nonce::try_assume_unique_for_key(nonce).unwrap(),
@@ -176,8 +172,8 @@ impl NgAead {
             )
             .ok()
             .ok_or(AeadError::DecryptionFailure)?;
-        ctext.truncate(ctext.len() - CHACHA20_POLY1305.tag_len());
-        Ok(ctext.into())
+        let truncate_to = ctext.len() - CHACHA20_POLY1305.tag_len();
+        Ok(ctext.freeze().slice(0..truncate_to))
     }
 }
 

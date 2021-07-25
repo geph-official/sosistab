@@ -19,6 +19,8 @@
 //!
 //! In the future, we will consider adding hyper-like traits to enable integration of Sosistab with other executors.
 
+mod buffer;
+pub use buffer::*;
 mod client;
 mod crypt;
 mod fec;

@@ -1,10 +1,9 @@
-use crate::*;
+use crate::mux::structs::{Message, RelKind};
+use crate::{buffer::Buff, runtime};
 use async_dup::Arc as DArc;
 use async_dup::Mutex as DMutex;
 use bipe::{BipeReader, BipeWriter};
-use bytes::Bytes;
 use connvars::ConnVars;
-use mux::structs::{Message, RelKind};
 
 use smol::channel::{Receiver, Sender};
 use smol::prelude::*;
@@ -150,7 +149,7 @@ async fn relconn_actor(
                     kind: RelKind::SynAck,
                     stream_id,
                     seqno: 0,
-                    payload: Bytes::new(),
+                    payload: Buff::new(),
                 });
                 SteadyState {
                     stream_id,
@@ -194,7 +193,7 @@ async fn relconn_actor(
                         kind: RelKind::Syn,
                         stream_id,
                         seqno: 0,
-                        payload: Bytes::copy_from_slice(
+                        payload: Buff::copy_from_slice(
                             additional_info
                                 .as_ref()
                                 .unwrap_or(&"".to_string())
@@ -244,7 +243,7 @@ async fn relconn_actor(
                     kind: RelKind::Rst,
                     stream_id,
                     seqno: 0,
-                    payload: Bytes::new(),
+                    payload: Buff::new(),
                 });
                 let die = smol::future::race(
                     async {

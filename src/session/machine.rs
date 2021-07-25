@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use crate::{
+    buffer::Buff,
     crypt::{AeadError, NgAead},
     fec::{pre_encode, FrameDecoder},
     protocol::DataFrameV2,
     Role, SVec,
 };
-use bytes::Bytes;
 use cached::{Cached, SizedCache};
 use parking_lot::Mutex;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -46,11 +46,11 @@ impl RecvMachine {
     }
 
     /// Processes a single frame. If successfully decoded, return the inner data.
-    pub fn process(&mut self, packet: &[u8]) -> Result<Option<SVec<Bytes>>, AeadError> {
+    pub fn process(&mut self, packet: &[u8]) -> Result<Option<SVec<Buff>>, AeadError> {
         self.process_ng(packet)
     }
 
-    fn process_ng(&mut self, packet: &[u8]) -> Result<Option<SVec<Bytes>>, AeadError> {
+    fn process_ng(&mut self, packet: &[u8]) -> Result<Option<SVec<Buff>>, AeadError> {
         let plain_frame = self.recv_crypt.decrypt(packet)?;
         let v2frame = DataFrameV2::depad(&plain_frame);
         match v2frame {
@@ -149,8 +149,8 @@ impl ReplayFilter {
 
 /// An out-of-band FEC reconstructor
 struct OobDecoder {
-    data_frames: SizedCache<u64, Bytes>,
-    parity_space: SizedCache<ParitySpaceKey, FxHashMap<u8, Bytes>>,
+    data_frames: SizedCache<u64, Buff>,
+    parity_space: SizedCache<ParitySpaceKey, FxHashMap<u8, Buff>>,
 }
 
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
@@ -173,7 +173,7 @@ impl OobDecoder {
     }
 
     /// Insert a new data frame.
-    fn insert_data(&mut self, frame_no: u64, data: Bytes) {
+    fn insert_data(&mut self, frame_no: u64, data: Buff) {
         self.data_frames.cache_set(frame_no, data);
     }
 
@@ -182,8 +182,8 @@ impl OobDecoder {
         &mut self,
         parity_info: ParitySpaceKey,
         parity_idx: u8,
-        parity: Bytes,
-    ) -> Vec<(u64, Bytes)> {
+        parity: Buff,
+    ) -> Vec<(u64, Buff)> {
         let hash_ref = self
             .parity_space
             .cache_get_or_set_with(parity_info, FxHashMap::default);
@@ -205,7 +205,7 @@ impl OobDecoder {
             toret
         };
         if actual_data.len() + hash_ref.len() >= parity_info.data_len as _ {
-            hash_ref.insert(255, Bytes::new());
+            hash_ref.insert(255, Buff::new());
             let mut decoder =
                 FrameDecoder::new(parity_info.data_len as _, parity_info.parity_len as _);
             // we first insert the data shards.
