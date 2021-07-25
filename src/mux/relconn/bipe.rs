@@ -40,13 +40,17 @@ impl BipeQueue {
     fn pop_fill(&mut self, fill: &mut [u8]) -> usize {
         let tentative = self.inner.pop_back();
         if let Some(tentative) = tentative {
+            assert!(self.counter >= tentative.len());
             if tentative.len() <= fill.len() {
                 fill[..tentative.len()].copy_from_slice(&tentative);
                 self.counter -= tentative.len();
                 tentative.len()
             } else {
                 fill.copy_from_slice(&tentative[..fill.len()]);
-                self.inner.push_back(tentative.slice(fill.len()..));
+                let tentlen = tentative.len();
+                let sliced = tentative.slice(fill.len()..);
+                assert_eq!(sliced.len(), tentlen - fill.len());
+                self.inner.push_back(sliced);
                 self.counter -= fill.len();
                 fill.len()
             }

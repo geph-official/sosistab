@@ -43,7 +43,7 @@ impl Drop for BuffMut {
         }
         BUFF_POOL.with(|pool| {
             let mut pool = pool.borrow_mut();
-            if pool.len() < 1000 {
+            if pool.len() < 10000 {
                 pool.push(std::mem::take(&mut self.inner));
             }
         })
@@ -64,7 +64,7 @@ impl BuffMut {
         let new_vec = BUFF_POOL.with(|pool| {
             let mut pool = pool.borrow_mut();
             let mut v = pool.pop().unwrap_or_else(|| {
-                tracing::warn!("pool empty, allocating from malloc");
+                // tracing::warn!("pool empty, allocating from malloc");
                 Vec::with_capacity(2048)
             });
             v.truncate(0);
@@ -78,7 +78,7 @@ impl BuffMut {
     pub fn freeze(self) -> Buff {
         Buff {
             frozen: Arc::new(self),
-            bounds: (Bound::Unbounded, Bound::Unbounded),
+            bounds: vec![(Bound::Unbounded, Bound::Unbounded)],
         }
     }
 
@@ -96,7 +96,7 @@ impl BuffMut {
 #[serde(from = "BuffMut")]
 pub struct Buff {
     frozen: Arc<BuffMut>,
-    bounds: (Bound<usize>, Bound<usize>),
+    bounds: Vec<(Bound<usize>, Bound<usize>)>,
 }
 
 impl PartialEq<Buff> for Buff {
@@ -137,7 +137,7 @@ impl Buff {
     }
     /// "Slices" the buff, making another buff. Takes ownership to prevent unnecessary cloning.
     #[inline]
-    pub fn slice(self, bounds: impl RangeBounds<usize>) -> Self {
+    pub fn slice(mut self, bounds: impl RangeBounds<usize>) -> Self {
         // make sure not OOB
         let loo: &[u8] = self.as_ref();
         let start_bound = match bounds.start_bound() {
@@ -152,9 +152,10 @@ impl Buff {
         };
         // intentionally trigger panic if OOB
         let _ = &loo[(start_bound, end_bound)];
+        self.bounds.push((start_bound, end_bound));
         Self {
             frozen: self.frozen,
-            bounds: (start_bound, end_bound),
+            bounds: self.bounds,
         }
     }
 
@@ -204,14 +205,18 @@ impl Serialize for Buff {
 impl AsRef<[u8]> for Buff {
     #[inline]
     fn as_ref(&self) -> &[u8] {
-        &self.frozen.as_slice()[self.bounds]
+        let mut toret = self.frozen.as_slice();
+        for bound in self.bounds.iter().copied() {
+            toret = &toret[bound]
+        }
+        toret
     }
 }
 
 impl Borrow<[u8]> for Buff {
     #[inline]
     fn borrow(&self) -> &[u8] {
-        &self.frozen.as_slice()[self.bounds]
+        self.as_ref()
     }
 }
 
