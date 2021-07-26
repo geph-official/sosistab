@@ -44,7 +44,7 @@ mod recfilter;
 mod stats;
 pub use stats::*;
 
-pub(crate) type SVec<T> = SmallVec<[T; 32]>;
+pub(crate) type SVec<T> = SmallVec<[T; 16]>;
 
 /// Safely deserialize
 pub(crate) fn safe_deserialize<T: DeserializeOwned>(bts: &[u8]) -> bincode::Result<T> {

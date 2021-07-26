@@ -37,7 +37,7 @@ impl DerefMut for BuffMut {
 impl Drop for BuffMut {
     #[inline]
     fn drop(&mut self) {
-        if self.capacity() > 4096 {
+        if self.capacity() > 16384 {
             tracing::debug!("freeing oversize {}", self.capacity());
             return;
         }
