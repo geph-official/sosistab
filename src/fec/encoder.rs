@@ -59,7 +59,7 @@ impl FrameEncoder {
         }
         // return
         let mut toret = Vec::with_capacity(data_shards + parity_shards);
-        toret.extend(padded_pkts.iter().map(|vec| Buff::copy_from_slice(&vec)));
+        toret.extend(padded_pkts.iter().map(|vec| Buff::copy_from_slice(vec)));
         toret
     }
 

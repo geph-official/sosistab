@@ -213,7 +213,7 @@ impl OobDecoder {
                 if data.len() + 2 > parity_info.pad_size {
                     return vec![];
                 }
-                let data = pre_encode(&data, parity_info.pad_size);
+                let data = pre_encode(data, parity_info.pad_size);
                 decoder.decode(&data, (i - parity_info.first_data) as _);
             }
             // make a list of MISSING data ids

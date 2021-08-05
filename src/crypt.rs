@@ -63,8 +63,8 @@ impl LegacyAead {
         // overwrite first 128 bits of key with the nonce
         let mut chacha_key = self.chacha_key;
         let mut blake3_key = self.blake3_key;
-        (&mut chacha_key[0..16]).copy_from_slice(&nonce);
-        (&mut blake3_key[0..16]).copy_from_slice(&nonce);
+        (&mut chacha_key[0..16]).copy_from_slice(nonce);
+        (&mut blake3_key[0..16]).copy_from_slice(nonce);
         // decrypt
         let mut out_space = BuffMut::new();
         out_space.extend_from_slice(ciphertext);
@@ -128,7 +128,7 @@ pub struct NgAead {
 
 impl NgAead {
     pub fn new(key: &[u8]) -> Self {
-        let ubk = UnboundKey::new(&CHACHA20_POLY1305, &key).unwrap();
+        let ubk = UnboundKey::new(&CHACHA20_POLY1305, key).unwrap();
         Self {
             key: Arc::new(LessSafeKey::new(ubk)),
         }
@@ -145,7 +145,7 @@ impl NgAead {
         rand::thread_rng().fill_bytes(&mut nonce);
         // make an output. it starts out containing the plaintext.
         let mut output = BuffMut::new();
-        output.extend_from_slice(&msg);
+        output.extend_from_slice(msg);
         let lala: &mut Vec<_> = &mut output;
         // now we overwrite it
         self.key
@@ -163,7 +163,7 @@ impl NgAead {
         // nonce is last 12 bytes
         let (ctext, nonce) = ctext.split_at(ctext.len() - CHACHA20_POLY1305.nonce_len());
         // we now open
-        let mut ctext = BuffMut::copy_from_slice(&ctext);
+        let mut ctext = BuffMut::copy_from_slice(ctext);
         self.key
             .open_in_place(
                 Nonce::try_assume_unique_for_key(nonce).unwrap(),
@@ -239,9 +239,9 @@ pub fn triple_ecdh(
     their_long_pk: &x25519_dalek::PublicKey,
     their_eph_pk: &x25519_dalek::PublicKey,
 ) -> blake3::Hash {
-    let g_e_a = my_eph_sk.diffie_hellman(&their_long_pk);
-    let g_a_e = my_long_sk.diffie_hellman(&their_eph_pk);
-    let g_e_e = my_eph_sk.diffie_hellman(&their_eph_pk);
+    let g_e_a = my_eph_sk.diffie_hellman(their_long_pk);
+    let g_a_e = my_long_sk.diffie_hellman(their_eph_pk);
+    let g_e_e = my_eph_sk.diffie_hellman(their_eph_pk);
     let to_hash = {
         let mut to_hash = Vec::new();
         if g_e_a.as_bytes() < g_a_e.as_bytes() {

@@ -35,7 +35,7 @@ pub(crate) async fn connect_custom(cfg: LowlevelClientConfig) -> std::io::Result
     for timeout_factor in (0u32..).map(|x| 2u64.pow(x)) {
         // send hello
         let init_hello = crypt::LegacyAead::new(&cookie.generate_c2s().next().unwrap())
-            .pad_encrypt_v1(&std::slice::from_ref(&init_hello), 1000);
+            .pad_encrypt_v1(std::slice::from_ref(&init_hello), 1000);
         backhaul.send_to(init_hello, cfg.server_addr).await?;
         tracing::trace!("sent client hello");
         // wait for response

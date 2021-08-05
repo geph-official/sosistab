@@ -35,14 +35,14 @@ impl ObfsTcp {
     fn new(ss: blake3::Hash, is_server: bool, inner: TcpStream) -> Self {
         let up_chacha = Arc::new(Mutex::new(
             ChaCha8::new_var(
-                blake3::keyed_hash(&TCP_UP_KEY, ss.as_bytes()).as_bytes(),
+                blake3::keyed_hash(TCP_UP_KEY, ss.as_bytes()).as_bytes(),
                 &[0; 8],
             )
             .unwrap(),
         ));
         let dn_chacha = Arc::new(Mutex::new(
             ChaCha8::new_var(
-                blake3::keyed_hash(&TCP_DN_KEY, ss.as_bytes()).as_bytes(),
+                blake3::keyed_hash(TCP_DN_KEY, ss.as_bytes()).as_bytes(),
                 &[0; 8],
             )
             .unwrap(),
@@ -72,7 +72,7 @@ impl ObfsTcp {
         assert!(msg.len() <= 2048);
         let mut buf = [0u8; 2048];
         let buf = &mut buf[..msg.len()];
-        buf.copy_from_slice(&msg);
+        buf.copy_from_slice(msg);
         self.send_chacha.lock().apply_keystream(buf);
         let mut inner = self.inner.clone();
         inner.write_all(buf).await?;

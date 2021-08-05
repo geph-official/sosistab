@@ -9,7 +9,7 @@ use smol::channel::Receiver;
 use crate::{
     buffer::{Buff, BuffMut},
     mux::{
-        congestion::{CongestionControl, Cubic, Reno},
+        congestion::{CongestionControl, Cubic, Highspeed},
         structs::*,
     },
     safe_deserialize, MyFutureExt,
@@ -65,12 +65,13 @@ impl Default for ConnVars {
 
             lost_seqnos: Vec::new(),
             last_loss: None,
-            cc: Box::new(Cubic::new(0.7, 0.4)),
+            // cc: Box::new(Cubic::new(0.7, 0.4)),
+            cc: Box::new(Highspeed::new()),
         }
     }
 }
 
-const ACK_BATCH: usize = 32;
+const ACK_BATCH: usize = 6;
 
 #[derive(Debug)]
 enum ConnVarEvt {
@@ -162,7 +163,7 @@ impl ConnVars {
             })) => {
                 tracing::trace!("new data pkt with seqno={}", seqno);
                 if self.delayed_ack_timer.is_none() {
-                    self.delayed_ack_timer = Instant::now().checked_add(Duration::from_millis(1));
+                    self.delayed_ack_timer = Instant::now().checked_add(Duration::from_millis(10));
                 }
                 if self.reorderer.insert(seqno, payload) {
                     self.ack_seqnos.insert(seqno);
@@ -280,6 +281,7 @@ impl ConnVars {
 
         let new_write = async {
             smol::Timer::at(self.next_pace_time).await;
+
             while self.write_fragments.is_empty() {
                 let to_write = {
                     let mut bts = BuffMut::new();

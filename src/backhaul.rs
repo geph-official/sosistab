@@ -1,7 +1,6 @@
 use arrayvec::ArrayVec;
 use smallvec::smallvec;
 use smol::Async;
-use socket2::Socket;
 use std::{
     io,
     net::{SocketAddr, UdpSocket},

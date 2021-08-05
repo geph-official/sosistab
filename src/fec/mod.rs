@@ -13,7 +13,7 @@ pub fn pre_encode(pkt: &[u8], len: usize) -> BuffMut {
     let hdr = (pkt.len() as u16).to_le_bytes();
     let mut bts = BuffMut::new();
     bts.extend_from_slice(&hdr);
-    bts.extend_from_slice(&pkt);
+    bts.extend_from_slice(pkt);
     bts.extend_from_slice(&vec![0u8; len - pkt.len() - 2]);
     bts
 }

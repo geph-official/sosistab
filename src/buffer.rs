@@ -1,3 +1,5 @@
+use concurrent_queue::ConcurrentQueue;
+use once_cell::sync::Lazy;
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
 use std::{
     borrow::Borrow,
@@ -7,9 +9,11 @@ use std::{
     sync::Arc,
 };
 
-thread_local! {
-    static BUFF_POOL: RefCell<Vec<Vec<u8>>> = Default::default()
-}
+// thread_local! {
+//     static BUFF_POOL: RefCell<Vec<Vec<u8>>> = Default::default()
+// }
+
+static BUFF_POOL: Lazy<ConcurrentQueue<Vec<u8>>> = Lazy::new(|| ConcurrentQueue::bounded(100000));
 
 /// Represents a *mutable* buffer optimized for packet-sized payloads.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -37,16 +41,7 @@ impl DerefMut for BuffMut {
 impl Drop for BuffMut {
     #[inline]
     fn drop(&mut self) {
-        if self.capacity() > 16384 {
-            tracing::debug!("freeing oversize {}", self.capacity());
-            return;
-        }
-        BUFF_POOL.with(|pool| {
-            let mut pool = pool.borrow_mut();
-            if pool.len() < 10000 {
-                pool.push(std::mem::take(&mut self.inner));
-            }
-        })
+        let _ = BUFF_POOL.push(std::mem::take(&mut self.inner));
     }
 }
 
@@ -61,15 +56,8 @@ impl BuffMut {
     /// Creates a new BuffMut
     #[inline]
     pub fn new() -> Self {
-        let new_vec = BUFF_POOL.with(|pool| {
-            let mut pool = pool.borrow_mut();
-            let mut v = pool.pop().unwrap_or_else(|| {
-                // tracing::warn!("pool empty, allocating from malloc");
-                Vec::with_capacity(2048)
-            });
-            v.truncate(0);
-            v
-        });
+        let mut new_vec = BUFF_POOL.pop().unwrap_or_else(|_| Vec::with_capacity(2048));
+        new_vec.clear();
         Self { inner: new_vec }
     }
 

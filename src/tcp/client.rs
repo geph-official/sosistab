@@ -95,7 +95,7 @@ impl TcpClientBackhaul {
             // then we send a hello
             let init_c2s = cookie.generate_c2s().next().unwrap();
             let init_s2c = cookie.generate_s2c().next().unwrap();
-            let init_up_key = blake3::keyed_hash(&TCP_UP_KEY, &init_c2s);
+            let init_up_key = blake3::keyed_hash(TCP_UP_KEY, &init_c2s);
             let init_enc = NgAead::new(init_up_key.as_bytes());
             let to_send = HandshakeFrame::ClientHello {
                 long_pk: (&my_long_sk).into(),
@@ -107,7 +107,7 @@ impl TcpClientBackhaul {
             to_send.extend_from_slice(&random_padding);
             write_encrypted(init_enc, &to_send, &mut remote).await?;
             // now we wait for a response
-            let init_dn_key = blake3::keyed_hash(&TCP_DN_KEY, &init_s2c);
+            let init_dn_key = blake3::keyed_hash(TCP_DN_KEY, &init_s2c);
             let init_dec = NgAead::new(init_dn_key.as_bytes());
             let raw_response = read_encrypted(init_dec, &mut remote)
                 .await

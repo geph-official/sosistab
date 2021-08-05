@@ -1,29 +1,25 @@
 use super::CongestionControl;
 
-/// Classic, Reno-style congestion control.
-pub struct Reno {
+/// HSTCP-style congestion control.
+pub struct Highspeed {
     cwnd: f64,
-    incr: f64,
 }
 
-impl Reno {
-    /// Creates a new Reno instance with the given increment.
-    pub fn new(incr: usize) -> Self {
-        Self {
-            cwnd: 1.0,
-            incr: incr as f64,
-        }
+impl Highspeed {
+    /// Creates a new HSTCP instance with the given increment.
+    pub fn new() -> Self {
+        Self { cwnd: 1.0 }
     }
 }
 
-impl CongestionControl for Reno {
+impl CongestionControl for Highspeed {
     fn cwnd(&self) -> usize {
         self.cwnd as usize
     }
 
     fn mark_ack(&mut self) {
         tracing::trace!("ack => {:.2}", self.cwnd);
-        self.cwnd += self.incr / self.cwnd
+        self.cwnd += ((0.23) * self.cwnd.powf(0.4)).max(1.0) / self.cwnd
     }
 
     fn mark_loss(&mut self) {

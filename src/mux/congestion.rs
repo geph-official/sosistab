@@ -1,7 +1,7 @@
 mod cubic;
-mod reno;
+mod hstcp;
 pub use cubic::*;
-pub use reno::*;
+pub use hstcp::*;
 
 pub trait CongestionControl {
     /// Gets the current CWND
