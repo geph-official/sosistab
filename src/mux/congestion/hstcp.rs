@@ -24,6 +24,6 @@ impl CongestionControl for Highspeed {
 
     fn mark_loss(&mut self) {
         tracing::debug!("loss!!! => {:.2}", self.cwnd);
-        self.cwnd = (self.cwnd * 0.5).max(1.0)
+        self.cwnd = (self.cwnd * 0.8).max(1.0)
     }
 }

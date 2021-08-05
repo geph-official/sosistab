@@ -13,7 +13,7 @@ use std::{
 //     static BUFF_POOL: RefCell<Vec<Vec<u8>>> = Default::default()
 // }
 
-static BUFF_POOL: Lazy<ConcurrentQueue<Vec<u8>>> = Lazy::new(|| ConcurrentQueue::bounded(100000));
+static BUFF_POOL: Lazy<ConcurrentQueue<Vec<u8>>> = Lazy::new(|| ConcurrentQueue::unbounded());
 
 /// Represents a *mutable* buffer optimized for packet-sized payloads.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -41,6 +41,7 @@ impl DerefMut for BuffMut {
 impl Drop for BuffMut {
     #[inline]
     fn drop(&mut self) {
+        // dbg!(BUFF_POOL.len());
         let _ = BUFF_POOL.push(std::mem::take(&mut self.inner));
     }
 }
@@ -238,11 +239,11 @@ impl<'de> Visitor<'de> for BuffMutVisitor {
         Ok(bm)
     }
 
-    #[inline]
-    fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        Ok(BuffMut { inner: v })
-    }
+    // #[inline]
+    // fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E>
+    // where
+    //     E: serde::de::Error,
+    // {
+    //     Ok(BuffMut { inner: v })
+    // }
 }
