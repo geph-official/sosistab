@@ -22,7 +22,7 @@ pub async fn multiplex(
     conn_accept_send: Sender<RelConn>,
 ) -> anyhow::Result<()> {
     let conn_tab = Arc::new(ConnTable::default());
-    let (glob_send, glob_recv) = smol::channel::bounded(100);
+    let (glob_send, glob_recv) = smol::channel::bounded(1000);
     let (dead_send, dead_recv) = smol::channel::unbounded();
 
     // Reap death
