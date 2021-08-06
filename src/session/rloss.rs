@@ -82,6 +82,7 @@ impl RecvLossCalc {
             > self.window
             && self.good_count > 100.0
         {
+            tracing::debug!("recording loss {}", loss);
             self.loss_samples.push_back(loss.into());
             self.last_loss_update = now;
             self.lost_count = 0.0;
@@ -96,7 +97,7 @@ impl RecvLossCalc {
     pub fn calculate_loss(&mut self) -> f64 {
         let mut buf = self.loss_samples.clone();
         buf.make_contiguous().sort_unstable();
-        buf.get(buf.len() / 4)
+        buf.get(buf.len() / 2)
             .copied()
             .map(|v| v.into_inner())
             .unwrap_or(0.0)

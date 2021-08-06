@@ -36,6 +36,7 @@ impl FrameEncoder {
         // then we get an encoder for this size
         let data_shards = pkts.len();
         let parity_shards = self.repair_len(measured_loss, pkts.len());
+        tracing::debug!("encoding {},{}", data_shards, parity_shards);
         // then we encode
         // prepare the space for in-place mutation
         let mut parity_shard_space = vec![vec![0u8; max_length + 2]; parity_shards];
@@ -83,6 +84,6 @@ impl FrameEncoder {
                 panic!()
             }))
         .min(255 - run_len)
-        .min(run_len * 2)
+        // .min(run_len * 2)
     }
 }

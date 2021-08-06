@@ -9,7 +9,7 @@ use smol::channel::Receiver;
 use crate::{
     buffer::{Buff, BuffMut},
     mux::{
-        congestion::{CongestionControl, Cubic, Highspeed},
+        congestion::{CongestionControl, Highspeed},
         structs::*,
     },
     safe_deserialize, MyFutureExt,
@@ -66,12 +66,13 @@ impl Default for ConnVars {
             lost_seqnos: Vec::new(),
             last_loss: None,
             // cc: Box::new(Cubic::new(0.7, 0.4)),
-            cc: Box::new(Highspeed::new()),
+            cc: Box::new(Highspeed::new(1)),
         }
     }
 }
 
-const ACK_BATCH: usize = 6;
+const ACK_BATCH: usize = 16;
+const PACE_BATCH: usize = 2;
 
 #[derive(Debug)]
 enum ConnVarEvt {
@@ -237,6 +238,12 @@ impl ConnVars {
         }
         Ok(())
     }
+
+    /// Changes the congestion-control algorithm.
+    pub fn change_cc(&mut self, algo: impl CongestionControl + Send + 'static) {
+        self.cc = Box::new(algo)
+    }
+
     /// Gets the next event.
     async fn next_event(
         &mut self,
@@ -280,8 +287,6 @@ impl ConnVars {
         .pending_unless(first_rto.is_some());
 
         let new_write = async {
-            smol::Timer::at(self.next_pace_time).await;
-
             while self.write_fragments.is_empty() {
                 let to_write = {
                     let mut bts = BuffMut::new();
@@ -300,8 +305,12 @@ impl ConnVars {
                     return Ok(ConnVarEvt::Closing);
                 }
             }
-            let pacing_interval = Duration::from_secs_f64(1.0 / self.pacing_rate());
-            self.next_pace_time = Instant::now().max(self.next_pace_time + pacing_interval);
+            if self.next_free_seqno % PACE_BATCH as u64 == 0 {
+                smol::Timer::at(self.next_pace_time).await;
+                let pacing_interval = Duration::from_secs_f64(1.0 / self.pacing_rate());
+                self.next_pace_time =
+                    Instant::now().max(self.next_pace_time + pacing_interval * PACE_BATCH as u32);
+            }
             Ok::<ConnVarEvt, anyhow::Error>(ConnVarEvt::NewWrite(
                 self.write_fragments.pop_front().unwrap(),
             ))
@@ -323,6 +332,6 @@ impl ConnVars {
 
     fn pacing_rate(&self) -> f64 {
         // calculate implicit rate
-        (self.cc.cwnd() as f64 / self.inflight.min_rtt().as_secs_f64()).max(200.0)
+        (self.cc.cwnd() as f64 / self.inflight.min_rtt().as_secs_f64()).max(10.0)
     }
 }

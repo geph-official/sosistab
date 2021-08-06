@@ -194,7 +194,7 @@ async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<
         FecTimeout,
     }
 
-    const FEC_TIMEOUT_MS: u64 = 20;
+    const FEC_TIMEOUT_MS: u64 = 10;
 
     // FEC timer: when this expires, send parity packets regardless if we have assembled BURST_SIZE data packets.
     let mut fec_timer = smol::Timer::after(Duration::from_millis(FEC_TIMEOUT_MS));

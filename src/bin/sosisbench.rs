@@ -135,17 +135,16 @@ async fn flood_main(args: FloodArgs) -> anyhow::Result<()> {
 async fn client_main(args: ClientArgs) -> anyhow::Result<()> {
     // smolscale::permanently_single_threaded();
     let start = Instant::now();
-    let session = ClientConfig::new(
+    let mut cfg = ClientConfig::new(
         Protocol::DirectUdp,
         smol::net::resolve(&args.connect)
             .await
             .context("cannot resolve")?[0],
         (&*SNAKEOIL_SK).into(),
         Default::default(),
-    )
-    .connect()
-    .await
-    .context("cannot connect to sosistab")?;
+    );
+    cfg.shard_count = 16;
+    let session = cfg.connect().await.context("cannot connect to sosistab")?;
     eprintln!("Session established in {:?}", start.elapsed());
     let mux = sosistab::Multiplex::new(session);
     let start = Instant::now();

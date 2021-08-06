@@ -5,6 +5,7 @@ mod congestion;
 mod multiplex_actor;
 mod relconn;
 mod structs;
+// pub use congestion::*;
 pub use relconn::RelConn;
 
 /// A multiplex session over a sosistab session, implementing both reliable "streams" and unreliable messages.
