@@ -34,7 +34,7 @@ pub(crate) struct ConnVars {
 
     closing: bool,
     write_fragments: VecDeque<Buff>,
-    next_pace_time: Instant,
+    // next_pace_time: Instant,
     lost_seqnos: Vec<Seqno>,
     last_loss: Option<Instant>,
 
@@ -57,8 +57,7 @@ impl Default for ConnVars {
 
             write_fragments: VecDeque::new(),
 
-            next_pace_time: Instant::now(),
-
+            // next_pace_time: Instant::now(),
             lost_seqnos: Vec::new(),
             last_loss: None,
             // cc: Box::new(Cubic::new(0.7, 0.4)),
@@ -301,12 +300,12 @@ impl ConnVars {
                     return Ok(ConnVarEvt::Closing);
                 }
             }
-            if self.next_free_seqno % PACE_BATCH as u64 == 0 {
-                smol::Timer::at(self.next_pace_time).await;
-                let pacing_interval = Duration::from_secs_f64(1.0 / self.pacing_rate());
-                self.next_pace_time =
-                    Instant::now().max(self.next_pace_time + pacing_interval * PACE_BATCH as u32);
-            }
+            // if self.next_free_seqno % PACE_BATCH as u64 == 0 {
+            //     smol::Timer::at(self.next_pace_time).await;
+            //     let pacing_interval = Duration::from_secs_f64(1.0 / self.pacing_rate());
+            //     self.next_pace_time =
+            //         Instant::now().max(self.next_pace_time + pacing_interval * PACE_BATCH as u32);
+            // }
             Ok::<ConnVarEvt, anyhow::Error>(ConnVarEvt::NewWrite(
                 self.write_fragments.pop_front().unwrap(),
             ))

@@ -19,9 +19,9 @@ impl Pacer {
 
     /// Waits until the next time.
     pub async fn wait_next(&mut self) {
+        (&mut self.timer).await;
         self.next_pace_time = Instant::now().max(self.next_pace_time + self.interval);
         self.timer.set_at(self.next_pace_time);
-        (&mut self.timer).await;
     }
 
     /// Changes the interval.

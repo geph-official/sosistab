@@ -86,7 +86,7 @@ impl StatsCalculator {
 
     /// Gets an estimation of the maximum packets-per-second.
     pub fn max_pps(&self) -> f64 {
-        self.ping_calc.read().pps_estimate
+        self.ping_calc.read().pps_estimate.max(100.0)
     }
 
     /// Get ping
@@ -129,7 +129,7 @@ impl PingCalc {
         self.inflight_seqno = Some(sn);
         self.inflight_time = Some(Instant::now());
         self.last_acked_pkts = self.acked_pkts;
-        self.pps_estimate = 100.0;
+        // self.pps_estimate = 100.0;
     }
 
     /// "Acknowledges" a packet, returning the current packets-per-second estimate.
@@ -153,7 +153,7 @@ impl PingCalc {
                 } else {
                     self.pps_estimate = self.pps_estimate * 0.99 + pps * 0.01;
                 }
-                dbg!(self.pps_estimate);
+                // dbg!(self.pps_estimate);
             }
         }
     }

@@ -234,7 +234,7 @@ async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<
                 };
                 let send_padded = send_framed.pad(loss_u8);
                 ctx.statg.ping_send(frame_no);
-                // pacer.set_interval(Duration::from_secs_f64(0.5 / ctx.statg.max_pps()));
+                pacer.set_interval(Duration::from_secs_f64(0.5 / ctx.statg.max_pps()));
                 let send_encrypted = ctx.send_crypt.encrypt(&send_padded);
                 ctx.send_outgoing.send(send_encrypted).await.ok()?;
                 // we now add to unfecked
