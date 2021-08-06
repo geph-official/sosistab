@@ -23,10 +23,8 @@ use super::{
 use smol::prelude::*;
 
 pub(crate) struct ConnVars {
-    pub pre_inflight: VecDeque<Message>,
     pub inflight: Inflight,
     pub next_free_seqno: Seqno,
-    pub retrans_count: u64,
 
     pub delayed_ack_timer: Option<Instant>,
     pub ack_seqnos: FxHashSet<Seqno>,
@@ -46,10 +44,8 @@ pub(crate) struct ConnVars {
 impl Default for ConnVars {
     fn default() -> Self {
         ConnVars {
-            pre_inflight: VecDeque::new(),
             inflight: Inflight::new(),
             next_free_seqno: 0,
-            retrans_count: 0,
 
             delayed_ack_timer: None,
             ack_seqnos: FxHashSet::default(),

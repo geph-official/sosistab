@@ -41,7 +41,7 @@ impl StatsCalculator {
             .fetch_max(frame_no, std::sync::atomic::Ordering::Relaxed);
         self.total_recv_frames
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        self.ping_calc.write().ack(their_hrfn);
+        self.ping_calc.write().ack(their_hrfn, their_trf);
         if let Some(actual_loss) = actual_loss {
             // tracing::warn!("recording actual loss {}", actual_loss);
             self.actual_loss.write().replace(actual_loss);
@@ -84,6 +84,11 @@ impl StatsCalculator {
         (self.loss() * 255.0) as u8
     }
 
+    /// Gets an estimation of the maximum packets-per-second.
+    pub fn max_pps(&self) -> f64 {
+        self.ping_calc.read().pps_estimate
+    }
+
     /// Get ping
     pub fn ping(&self) -> Duration {
         self.ping_calc.read().ping()
@@ -96,7 +101,7 @@ impl StatsCalculator {
 
     /// "Send" a ping
     pub fn ping_send(&self, frame_no: u64) {
-        self.ping_calc.write().send(frame_no)
+        self.ping_calc.write().send(frame_no);
     }
 
     // /// "Ack" a ping
@@ -108,33 +113,52 @@ impl StatsCalculator {
 /// A ping calculator
 #[derive(Debug, Default)]
 struct PingCalc {
-    send_seqno: Option<u64>,
-    send_time: Option<Instant>,
+    acked_pkts: u64,
+    last_acked_pkts: u64,
+    inflight_seqno: Option<u64>,
+    inflight_time: Option<Instant>,
     pings: VecDeque<Duration>,
+    pps_estimate: f64,
 }
 
 impl PingCalc {
     pub fn send(&mut self, sn: u64) {
-        if self.send_seqno.is_some() {
+        if self.inflight_seqno.is_some() {
             return;
         }
-        self.send_seqno = Some(sn);
-        self.send_time = Some(Instant::now());
+        self.inflight_seqno = Some(sn);
+        self.inflight_time = Some(Instant::now());
+        self.last_acked_pkts = self.acked_pkts;
+        self.pps_estimate = 100.0;
     }
-    pub fn ack(&mut self, sn: u64) {
-        if let Some(send_seqno) = self.send_seqno {
+
+    /// "Acknowledges" a packet, returning the current packets-per-second estimate.
+    pub fn ack(&mut self, sn: u64, acked_pkts: u64) {
+        self.acked_pkts = self.acked_pkts.max(acked_pkts);
+        if let Some(send_seqno) = self.inflight_seqno {
             if sn >= send_seqno {
-                let ping_sample = self.send_time.take().unwrap().elapsed();
+                let ping_sample = self.inflight_time.take().unwrap().elapsed();
                 if ping_sample.as_millis() < 800 {
                     self.pings.push_back(ping_sample);
                     if self.pings.len() > 8 {
                         self.pings.pop_front();
                     }
                 }
-                self.send_seqno = None
+                self.inflight_seqno = None;
+                // compute bandwidth
+                let delta_acked = self.acked_pkts - self.last_acked_pkts;
+                let pps = delta_acked as f64 / ping_sample.as_secs_f64();
+                if pps > self.pps_estimate {
+                    self.pps_estimate = pps;
+                } else {
+                    self.pps_estimate = self.pps_estimate * 0.99 + pps * 0.01;
+                }
+                dbg!(self.pps_estimate);
             }
         }
     }
+
+    /// Gets an estimation of the current ping
     pub fn ping(&self) -> Duration {
         self.pings
             .iter()
@@ -142,6 +166,8 @@ impl PingCalc {
             .min()
             .unwrap_or_else(|| Duration::from_secs(1000))
     }
+
+    /// Gets an unfiltered estimation for the current ping
     pub fn raw_ping(&self) -> Duration {
         self.pings
             .iter()

@@ -3,7 +3,6 @@ use once_cell::sync::Lazy;
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
 use std::{
     borrow::Borrow,
-    cell::RefCell,
     cmp::Ordering,
     ops::{Bound, Deref, DerefMut, RangeBounds},
     sync::Arc,
@@ -13,7 +12,7 @@ use std::{
 //     static BUFF_POOL: RefCell<Vec<Vec<u8>>> = Default::default()
 // }
 
-static BUFF_POOL: Lazy<ConcurrentQueue<Vec<u8>>> = Lazy::new(|| ConcurrentQueue::unbounded());
+static BUFF_POOL: Lazy<ConcurrentQueue<Vec<u8>>> = Lazy::new(|| ConcurrentQueue::bounded(100000));
 
 /// Represents a *mutable* buffer optimized for packet-sized payloads.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
