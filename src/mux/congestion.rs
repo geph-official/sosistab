@@ -1,7 +1,9 @@
 mod cubic;
 mod hstcp;
+mod trivial;
 pub use cubic::*;
 pub use hstcp::*;
+pub use trivial::*;
 
 pub trait CongestionControl {
     /// Gets the current CWND

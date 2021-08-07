@@ -4,7 +4,7 @@ use crate::{crypt::NgAead, protocol::DataFrameV2};
 use machine::RecvMachine;
 use parking_lot::Mutex;
 use rloss::RecvLossCalc;
-use smol::channel::{Receiver, Sender};
+use smol::channel::{Receiver, Sender, TrySendError};
 use smol::prelude::*;
 use stats::StatsCalculator;
 
@@ -113,7 +113,7 @@ impl Session {
         let to_send: Buff = to_send.into();
         self.statistics
             .increment("total_sent_bytes", to_send.len() as f32);
-        if self.send_tosend.send(to_send).await.is_err() {
+        if let Err(TrySendError::Closed(_)) = self.send_tosend.try_send(to_send) {
             self.recv_decoded.close();
             Err(SessionError::SessionDropped)
         } else {

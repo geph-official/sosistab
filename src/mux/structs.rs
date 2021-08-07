@@ -49,10 +49,9 @@ impl<T: Clone> Reorderer<T> {
             if self.pkts.insert(seq, item).is_some() {
                 tracing::debug!("spurious retransmission of {} received", seq);
             }
-            // self.pkts.insert(seq, item);
             true
         } else {
-            tracing::trace!("rejecting (seq={}, min={})", seq, self.min);
+            tracing::debug!("rejecting (seq={}, min={})", seq, self.min);
             false
         }
     }

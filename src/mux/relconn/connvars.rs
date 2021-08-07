@@ -9,7 +9,7 @@ use smol::channel::Receiver;
 use crate::{
     buffer::{Buff, BuffMut},
     mux::{
-        congestion::{CongestionControl, Highspeed},
+        congestion::{CongestionControl, Cubic, Highspeed},
         structs::*,
     },
     safe_deserialize, MyFutureExt,
@@ -60,14 +60,13 @@ impl Default for ConnVars {
             // next_pace_time: Instant::now(),
             lost_seqnos: Vec::new(),
             last_loss: None,
-            // cc: Box::new(Cubic::new(0.7, 0.4)),
-            cc: Box::new(Highspeed::new(1)),
+            cc: Box::new(Cubic::new(0.7, 0.4)),
+            // cc: Box::new(Highspeed::new(2)),
         }
     }
 }
 
 const ACK_BATCH: usize = 16;
-const PACE_BATCH: usize = 2;
 
 #[derive(Debug)]
 enum ConnVarEvt {
@@ -93,7 +92,7 @@ impl ConnVars {
             Ok(ConnVarEvt::Retransmit(seqno)) => {
                 self.lost_seqnos.retain(|v| *v != seqno);
                 if let Some(msg) = self.inflight.retransmit(seqno) {
-                    tracing::trace!(
+                    tracing::debug!(
                         "** RETRANSMIT {} (inflight = {}, cwnd = {}, lost_count = {}) **",
                         seqno,
                         self.inflight.inflight(),
@@ -110,7 +109,7 @@ impl ConnVars {
                 Ok(())
             }
             Ok(ConnVarEvt::Rto(seqno)) => {
-                tracing::trace!(
+                tracing::debug!(
                     "** MARKING LOST {} (unacked = {}, inflight = {}, cwnd = {}, lost_count = {}) **",
                     seqno,
                     self.inflight.unacked(),
@@ -119,12 +118,14 @@ impl ConnVars {
                     self.inflight.lost_count(),
                 );
                 let now = Instant::now();
-                if let Some(old) = self.last_loss.replace(now) {
+                if let Some(old) = self.last_loss {
                     if now.saturating_duration_since(old) > self.inflight.rto() {
-                        self.cc.mark_loss()
+                        self.cc.mark_loss();
+                        self.last_loss = Some(now);
                     }
                 } else {
                     self.cc.mark_loss();
+                    self.last_loss = Some(now);
                 }
                 self.inflight.mark_lost(seqno);
                 self.lost_seqnos.push(seqno);
@@ -159,7 +160,7 @@ impl ConnVars {
             })) => {
                 tracing::trace!("new data pkt with seqno={}", seqno);
                 if self.delayed_ack_timer.is_none() {
-                    self.delayed_ack_timer = Instant::now().checked_add(Duration::from_millis(10));
+                    self.delayed_ack_timer = Instant::now().checked_add(Duration::from_millis(1));
                 }
                 if self.reorderer.insert(seqno, payload) {
                     self.ack_seqnos.insert(seqno);

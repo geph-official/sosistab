@@ -119,6 +119,7 @@ struct PingCalc {
     inflight_time: Option<Instant>,
     pings: VecDeque<Duration>,
     pps_estimate: f64,
+    pps_update_time: Option<Instant>,
 }
 
 impl PingCalc {
@@ -148,10 +149,14 @@ impl PingCalc {
                 // compute bandwidth
                 let delta_acked = self.acked_pkts - self.last_acked_pkts;
                 let pps = delta_acked as f64 / ping_sample.as_secs_f64();
-                if pps > self.pps_estimate {
+                if pps > self.pps_estimate
+                    || self
+                        .pps_update_time
+                        .map(|f| f.elapsed().as_secs() > 10)
+                        .unwrap_or_default()
+                {
                     self.pps_estimate = pps;
-                } else {
-                    self.pps_estimate = self.pps_estimate * 0.99 + pps * 0.01;
+                    self.pps_update_time = Some(Instant::now())
                 }
                 // dbg!(self.pps_estimate);
             }
