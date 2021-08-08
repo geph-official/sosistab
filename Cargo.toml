@@ -59,7 +59,12 @@ thiserror = "1.0"
 ordered-float="2"
 hex="0.4"
 fastrand="1"
+sluice="0.5"
 
+[profile.release]
+panic = "abort"
+opt-level=3
+debug=2
 
 [target.'cfg(unix)'.dependencies]
 nix= "0.19.1"

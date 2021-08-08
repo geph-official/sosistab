@@ -4,6 +4,7 @@ use std::{
 };
 
 use rustc_hash::FxHashSet;
+use sluice::pipe::{PipeReader, PipeWriter};
 use smol::channel::Receiver;
 
 use crate::{
@@ -15,11 +16,7 @@ use crate::{
     safe_deserialize, MyFutureExt,
 };
 
-use super::{
-    bipe::{BipeReader, BipeWriter},
-    inflight::Inflight,
-    MSS,
-};
+use super::{inflight::Inflight, MSS};
 use smol::prelude::*;
 
 pub(crate) struct ConnVars {
@@ -83,8 +80,8 @@ impl ConnVars {
     pub async fn process_one(
         &mut self,
         stream_id: u16,
-        recv_write: &mut BipeReader,
-        send_read: &mut BipeWriter,
+        recv_write: &mut PipeReader,
+        send_read: &mut PipeWriter,
         recv_wire_read: &Receiver<Message>,
         transmit: impl Fn(Message),
     ) -> anyhow::Result<()> {
@@ -243,7 +240,7 @@ impl ConnVars {
     /// Gets the next event.
     async fn next_event(
         &mut self,
-        recv_write: &mut BipeReader,
+        recv_write: &mut PipeReader,
         recv_wire_read: &Receiver<Message>,
     ) -> anyhow::Result<ConnVarEvt> {
         // smol::future::yield_now().await;

@@ -14,21 +14,21 @@ use std::{
 };
 
 /// Create a "bipe". Use async_dup's methods if you want something cloneable/shareable
-pub fn bipe(capacity: usize) -> (BipeWriter, BipeReader) {
+pub fn bipe(capacity: usize) -> (PipeWriter, PipeReader) {
     let buffer = rtrb::RingBuffer::new(capacity);
     let (send_buf, recv_buf) = buffer.split();
     let write_ready = Arc::new(event_listener::Event::new());
     let read_ready = Arc::new(event_listener::Event::new());
     let closed = Arc::new(AtomicBool::new(false));
     (
-        BipeWriter {
+        PipeWriter {
             queue: send_buf,
             signal: write_ready.clone(),
             signal_reader: read_ready.clone(),
             listener: write_ready.listen(),
             closed: closed.clone(),
         },
-        BipeReader {
+        PipeReader {
             queue: recv_buf,
             signal: read_ready.clone(),
             signal_writer: write_ready.clone(),
@@ -39,7 +39,7 @@ pub fn bipe(capacity: usize) -> (BipeWriter, BipeReader) {
 }
 
 /// Writing end of a byte pipe.
-pub struct BipeWriter {
+pub struct PipeWriter {
     queue: Producer<u8>,
     signal: Arc<event_listener::Event>,
     signal_reader: Arc<event_listener::Event>,
@@ -47,7 +47,7 @@ pub struct BipeWriter {
     closed: Arc<AtomicBool>,
 }
 
-impl Drop for BipeWriter {
+impl Drop for PipeWriter {
     fn drop(&mut self) {
         self.closed.store(true, Ordering::SeqCst);
         self.signal_reader.notify(1);
@@ -58,7 +58,7 @@ fn broken_pipe() -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::ConnectionReset, "broken pipe")
 }
 
-impl AsyncWrite for BipeWriter {
+impl AsyncWrite for PipeWriter {
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -97,7 +97,7 @@ impl AsyncWrite for BipeWriter {
 }
 
 /// Read end of a byte pipe.
-pub struct BipeReader {
+pub struct PipeReader {
     queue: Consumer<u8>,
     signal: Arc<event_listener::Event>,
     signal_writer: Arc<event_listener::Event>,
@@ -105,7 +105,7 @@ pub struct BipeReader {
     closed: Arc<AtomicBool>,
 }
 
-impl AsyncRead for BipeReader {
+impl AsyncRead for PipeReader {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
