@@ -1,6 +1,6 @@
 [package]
 name = "sosistab"
-version = "0.4.7-alpha.1"
+version = "0.4.7"
 authors = ["nullchinchilla <nullchinchilla@pm.me>", "Geph Project <contact@geph.io"]
 edition = "2018"
 description="An obfuscated datagram transport for horrible networks"
@@ -20,7 +20,7 @@ serde={ version = "1.0.118", features = ["derive"] }
 blake3= "0.3.7"
 c2-chacha= {version ="0.3.0"}
 rand={ version = "0.7" }
-constant_time_eq= "0.1.5"
+constant_time_eq= "0.1.5" 
 bincode= "1.3.1"
 event-listener= "2.5.1"
 futures-util="0.3"
