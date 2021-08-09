@@ -2,13 +2,12 @@ use crate::mux::structs::{Message, RelKind};
 use crate::{buffer::Buff, runtime};
 use async_dup::Arc as DArc;
 use async_dup::Mutex as DMutex;
+use bipe::{BipeReader, BipeWriter};
 use connvars::ConnVars;
 
-use sluice::pipe::{PipeReader, PipeWriter};
 use smol::channel::{Receiver, Sender};
 use smol::prelude::*;
 use std::{pin::Pin, sync::Arc, task::Context, task::Poll, time::Duration};
-mod bipe;
 mod connvars;
 mod inflight;
 
@@ -18,8 +17,8 @@ const MAX_WAIT_SECS: u64 = 60;
 #[derive(Clone)]
 /// [RelConn] represents a reliable stream, multiplexed over a [Multiplex]. It implements [AsyncRead], [AsyncWrite], and [Clone], making using it very similar to using a TcpStream.
 pub struct RelConn {
-    send_write: DArc<DMutex<PipeWriter>>,
-    recv_read: DArc<DMutex<PipeReader>>,
+    send_write: DArc<DMutex<BipeWriter>>,
+    recv_read: DArc<DMutex<BipeReader>>,
     additional_info: Option<String>,
 }
 
@@ -30,8 +29,8 @@ impl RelConn {
         dropper: impl FnOnce() + Send + 'static,
         additional_info: Option<String>,
     ) -> (Self, RelConnBack) {
-        let (recv_write, send_write) = sluice::pipe::pipe();
-        let (recv_read, send_read) = sluice::pipe::pipe();
+        let (send_write, recv_write) = bipe::bipe(128 * 1024);
+        let (send_read, recv_read) = bipe::bipe(128 * 1024);
         let (send_wire_read, recv_wire_read) = smol::channel::bounded(1000);
         let aic = additional_info.clone();
         let _task = runtime::spawn(async move {
@@ -129,8 +128,8 @@ use RelConnState::*;
 
 async fn relconn_actor(
     mut state: RelConnState,
-    mut recv_write: PipeReader,
-    mut send_read: PipeWriter,
+    mut recv_write: BipeReader,
+    mut send_read: BipeWriter,
     recv_wire_read: Receiver<Message>,
     send_wire_write: Sender<Message>,
     additional_info: Option<String>,

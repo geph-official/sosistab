@@ -3,8 +3,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use bipe::{BipeReader, BipeWriter};
 use rustc_hash::FxHashSet;
-use sluice::pipe::{PipeReader, PipeWriter};
 use smol::channel::Receiver;
 
 use crate::{
@@ -80,8 +80,8 @@ impl ConnVars {
     pub async fn process_one(
         &mut self,
         stream_id: u16,
-        recv_write: &mut PipeReader,
-        send_read: &mut PipeWriter,
+        recv_write: &mut BipeReader,
+        send_read: &mut BipeWriter,
         recv_wire_read: &Receiver<Message>,
         transmit: impl Fn(Message),
     ) -> anyhow::Result<()> {
@@ -166,7 +166,7 @@ impl ConnVars {
                 self.lowest_unseen += times.len() as u64;
                 let mut success = true;
                 for pkt in times {
-                    success |= send_read.write(&pkt).await.is_ok();
+                    success |= send_read.write_all(&pkt).await.is_ok();
                 }
                 if success {
                     Ok(())
@@ -240,7 +240,7 @@ impl ConnVars {
     /// Gets the next event.
     async fn next_event(
         &mut self,
-        recv_write: &mut PipeReader,
+        recv_write: &mut BipeReader,
         recv_wire_read: &Receiver<Message>,
     ) -> anyhow::Result<ConnVarEvt> {
         // smol::future::yield_now().await;
