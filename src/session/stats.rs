@@ -86,7 +86,7 @@ impl StatsCalculator {
 
     /// Gets an estimation of the maximum packets-per-second.
     pub fn max_pps(&self) -> f64 {
-        self.ping_calc.read().pps_estimate.max(100.0)
+        self.ping_calc.read().pps_estimate.max(1000.0)
     }
 
     /// Get ping

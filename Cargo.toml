@@ -65,7 +65,7 @@ bipe="0.1.1"
 [profile.release]
 panic = "abort"
 opt-level=3
-debug=2
+# debug=2
 
 [target.'cfg(unix)'.dependencies]
 nix= "0.19.1"

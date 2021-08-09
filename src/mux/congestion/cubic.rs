@@ -41,7 +41,7 @@ impl CongestionControl for Cubic {
     fn mark_ack(&mut self) {
         // tracing::debug!("ack => {:.2}", self.cwnd);
         // if no last_loss, just exponentially increase
-        let max_cwnd = self.cwnd + 32.0 / self.cwnd;
+        let max_cwnd = self.cwnd + 128.0 / self.cwnd;
         self.cwnd = max_cwnd;
         // recalculate; if there's a last loss this will fix things
         self.recalculate_cwnd();

@@ -10,7 +10,7 @@ use smol::channel::Receiver;
 use crate::{
     buffer::{Buff, BuffMut},
     mux::{
-        congestion::{CongestionControl, Cubic, Highspeed},
+        congestion::{CongestionControl, Cubic, Highspeed, Trivial},
         structs::*,
     },
     safe_deserialize, MyFutureExt,
@@ -59,6 +59,7 @@ impl Default for ConnVars {
             last_loss: None,
             cc: Box::new(Cubic::new(0.7, 0.4)),
             // cc: Box::new(Highspeed::new(2)),
+            // cc: Box::new(Trivial::new(400)),
         }
     }
 }
