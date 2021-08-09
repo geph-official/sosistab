@@ -218,7 +218,11 @@ async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<
             }
             Some(Event::FecTimeout)
         }
-        .or(async { Some(Event::NewPayload(ctx.recv_tosend.recv().await.ok()?)) })
+        .or(async {
+            pacer.wait_next().await;
+            pacer.set_interval(Duration::from_secs_f64(0.9 / ctx.statg.max_pps()));
+            Some(Event::NewPayload(ctx.recv_tosend.recv().await.ok()?))
+        })
         .await;
         let loss = ctx.rloss.lock().calculate_loss();
         let loss_u8 = (loss * 254.0) as u8;
@@ -234,7 +238,6 @@ async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<
                 };
                 let send_padded = send_framed.pad(loss_u8);
                 ctx.statg.ping_send(frame_no);
-                pacer.set_interval(Duration::from_secs_f64(0.9 / ctx.statg.max_pps()));
                 let send_encrypted = ctx.send_crypt.encrypt(&send_padded);
                 ctx.send_outgoing.send(send_encrypted).await.ok()?;
                 // we now add to unfecked
@@ -243,8 +246,6 @@ async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<
                 frame_no += 1;
                 // reset fec timer
                 fec_timer.set_after(Duration::from_millis(FEC_TIMEOUT_MS));
-
-                pacer.wait_next().await;
             }
             // we have something to send, as a FEC packet.
             Event::FecTimeout => {

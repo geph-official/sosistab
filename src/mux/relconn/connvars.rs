@@ -177,6 +177,7 @@ impl ConnVars {
             }
             Ok(ConnVarEvt::NewWrite(bts)) => {
                 assert!(bts.len() <= MSS);
+                tracing::trace!("sending write of length {}", bts.len());
                 // self.limiter.wait(implied_rate).await;
                 let seqno = self.next_free_seqno;
                 self.next_free_seqno += 1;
@@ -287,8 +288,12 @@ impl ConnVars {
                     bts.extend_from_slice(&[0; MSS]);
                     let n = recv_write.read(&mut bts).await;
                     if let Ok(n) = n {
-                        let bts = bts.freeze();
-                        Some(bts.slice(0..n))
+                        if n == 0 {
+                            None
+                        } else {
+                            let bts = bts.freeze();
+                            Some(bts.slice(0..n))
+                        }
                     } else {
                         None
                     }
