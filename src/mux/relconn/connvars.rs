@@ -13,6 +13,7 @@ use crate::{
         congestion::{CongestionControl, Cubic, Highspeed, Trivial},
         structs::*,
     },
+    pacer::Pacer,
     safe_deserialize, MyFutureExt,
 };
 
@@ -36,6 +37,8 @@ pub(crate) struct ConnVars {
     last_loss: Option<Instant>,
 
     cc: Box<dyn CongestionControl + Send>,
+
+    pacer: Pacer,
 }
 
 impl Default for ConnVars {
@@ -58,6 +61,8 @@ impl Default for ConnVars {
             lost_seqnos: Vec::new(),
             last_loss: None,
             cc: Box::new(Cubic::new(0.7, 0.4)),
+
+            pacer: Pacer::new(Duration::from_millis(1)),
             // cc: Box::new(Highspeed::new(2)),
             // cc: Box::new(Trivial::new(400)),
         }
@@ -304,6 +309,9 @@ impl ConnVars {
                     return Ok(ConnVarEvt::Closing);
                 }
             }
+            self.pacer.wait_next().await;
+            let pacing_interval = Duration::from_secs_f64(1.0 / self.pacing_rate());
+            self.pacer.set_interval(pacing_interval);
             // if self.next_free_seqno % PACE_BATCH as u64 == 0 {
             //     smol::Timer::at(self.next_pace_time).await;
             //     let pacing_interval = Duration::from_secs_f64(1.0 / self.pacing_rate());
@@ -324,13 +332,13 @@ impl ConnVars {
         };
         let retransmit = async { Ok(ConnVarEvt::Retransmit(first_retrans.unwrap())) }
             .pending_unless(first_retrans.is_some());
-        retransmit
-            .or(ack_timer.or(new_pkt.or(new_write.or(rto_timeout.or(final_timeout)))))
+        ack_timer
+            .or(retransmit.or(new_pkt.or(new_write.or(rto_timeout.or(final_timeout)))))
             .await
     }
 
     fn pacing_rate(&self) -> f64 {
         // calculate implicit rate
-        (self.cc.cwnd() as f64 / self.inflight.min_rtt().as_secs_f64()).max(10.0)
+        (self.cc.cwnd() as f64 / self.inflight.min_rtt().as_secs_f64()).max(100.0)
     }
 }
