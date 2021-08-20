@@ -339,6 +339,6 @@ impl ConnVars {
 
     fn pacing_rate(&self) -> f64 {
         // calculate implicit rate
-        (self.cc.cwnd() as f64 / self.inflight.min_rtt().as_secs_f64()).max(100.0)
+        (self.cc.cwnd() as f64 / self.inflight.min_rtt().as_secs_f64()).max(1000.0)
     }
 }
