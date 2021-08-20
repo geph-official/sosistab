@@ -26,9 +26,9 @@ impl CongestionControl for Highspeed {
     }
 
     fn mark_ack(&mut self) {
-        let multiplier = self.last_loss.elapsed().as_secs_f64().max(1.0).min(32.0);
+        // let multiplier = self.last_loss.elapsed().as_secs_f64().max(1.0).min(32.0);
         tracing::trace!("ack => {:.2}", self.cwnd);
-        self.cwnd += multiplier * ((0.23) * self.cwnd.powf(0.4)).max(1.0) / self.cwnd
+        self.cwnd += ((0.23) * self.cwnd.powf(0.4)).max(1.0) / self.cwnd
     }
 
     fn mark_loss(&mut self) {

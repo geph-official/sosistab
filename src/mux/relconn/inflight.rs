@@ -9,7 +9,7 @@ use self::calc::RttCalculator;
 mod calc;
 
 /// "Slack time" for fast retransmits
-const FAST_RETRANSMIT_DELAY: Duration = Duration::from_millis(100);
+const FAST_RETRANSMIT_DELAY: Duration = Duration::from_millis(50);
 
 #[derive(Debug, Clone)]
 /// An element of Inflight.
