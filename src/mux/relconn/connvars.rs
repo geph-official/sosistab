@@ -10,7 +10,7 @@ use smol::channel::Receiver;
 use crate::{
     buffer::{Buff, BuffMut},
     mux::{
-        congestion::{CongestionControl, Cubic, Highspeed, Trivial},
+        congestion::{CongestionControl, Highspeed},
         structs::*,
     },
     pacer::Pacer,
@@ -60,9 +60,9 @@ impl Default for ConnVars {
             // next_pace_time: Instant::now(),
             lost_seqnos: Vec::new(),
             last_loss: None,
-            cc: Box::new(Cubic::new(0.7, 0.4)),
+            // cc: Box::new(Cubic::new(0.7, 0.4)),
             pacer: Pacer::new(Duration::from_millis(1)),
-            // cc: Box::new(Highspeed::new(3)),
+            cc: Box::new(Highspeed::new(3)),
             // cc: Box::new(Trivial::new(400)),
         }
     }

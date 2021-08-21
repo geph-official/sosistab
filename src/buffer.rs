@@ -180,12 +180,12 @@ impl From<&[u8]> for Buff {
 }
 
 impl Serialize for Buff {
-    #[inline]
+    // #[inline]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        let buf: &[u8] = self.as_ref();
+        let buf = serde_bytes::Bytes::new(self.as_ref());
         buf.serialize(serializer)
     }
 }
@@ -214,7 +214,7 @@ impl<'de> Deserialize<'de> for BuffMut {
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_byte_buf(BuffMutVisitor {})
+        deserializer.deserialize_bytes(BuffMutVisitor {})
     }
 }
 

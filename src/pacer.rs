@@ -1,10 +1,13 @@
 use std::time::{Duration, Instant};
 
+const QUANTUM: u32 = 4;
+
 /// A high-precision pacer that uses async-io's timers under the hood.
 pub struct Pacer {
     next_pace_time: Instant,
     timer: smol::Timer,
     interval: Duration,
+    counter: u32,
 }
 
 impl Pacer {
@@ -14,14 +17,19 @@ impl Pacer {
             next_pace_time: Instant::now(),
             timer: smol::Timer::at(Instant::now()),
             interval,
+            counter: 0,
         }
     }
 
     /// Waits until the next time.
     pub async fn wait_next(&mut self) {
-        (&mut self.timer).await;
-        self.next_pace_time = Instant::now().max(self.next_pace_time + self.interval);
-        self.timer.set_at(self.next_pace_time);
+        self.counter += 1;
+        if self.counter >= QUANTUM {
+            self.counter = 0;
+            (&mut self.timer).await;
+            self.next_pace_time = Instant::now().max(self.next_pace_time + self.interval * QUANTUM);
+            self.timer.set_at(self.next_pace_time);
+        }
     }
 
     /// Changes the interval.

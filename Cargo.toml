@@ -61,6 +61,7 @@ hex="0.4"
 fastrand="1"
 # sluice="0.5"
 bipe="0.1.1"
+serde_bytes = "0.11.5"
 
 [profile.release]
 panic = "abort"
