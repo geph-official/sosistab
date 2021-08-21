@@ -176,6 +176,7 @@ async fn client_backhaul_once(
 
         match smol::future::race(down, up).await {
             Ok(Evt::Incoming(bts)) => {
+                tracing::debug!("received on shard {}", shard_id);
                 for bts in bts {
                     let _ = session_back.inject_incoming(&bts);
                 }
@@ -184,12 +185,12 @@ async fn client_backhaul_once(
                 let bts: Buff = bts;
                 let now = Instant::now();
                 if last_remind
-                    .replace(Instant::now())
-                    .map(|f| f.elapsed() > Duration::from_secs(1))
+                    .map(|f| now.saturating_duration_since(f) > Duration::from_secs(3))
                     .unwrap_or_default()
                     || !updated
                 {
                     updated = true;
+                    last_remind = Some(now);
                     let g_encrypt = crypt::LegacyAead::new(&cookie.generate_c2s().next().unwrap());
                     if let Some(reset_millis) = my_reset_millis {
                         if now.saturating_duration_since(last_reset).as_millis() > reset_millis {

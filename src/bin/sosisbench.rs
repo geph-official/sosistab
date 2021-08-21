@@ -37,6 +37,9 @@ struct ClientArgs {
     #[argh(option)]
     /// host:port of the server
     connect: String,
+    #[argh(option)]
+    /// whether to use tcp
+    use_tcp: bool,
 }
 
 /// Client
@@ -75,6 +78,7 @@ fn main() -> anyhow::Result<()> {
         Subcmds::SelfTest(_) => {
             let client_args = ClientArgs {
                 connect: "127.0.0.1:19999".into(),
+                use_tcp: false,
             };
             let server_args = ServerArgs {
                 listen: "127.0.0.1:19999".parse().unwrap(),
@@ -136,7 +140,11 @@ async fn client_main(args: ClientArgs) -> anyhow::Result<()> {
     // smolscale::permanently_single_threaded();
     let start = Instant::now();
     let mut cfg = ClientConfig::new(
-        Protocol::DirectUdp,
+        if args.use_tcp {
+            Protocol::DirectTcp
+        } else {
+            Protocol::DirectUdp
+        },
         smol::net::resolve(&args.connect)
             .await
             .context("cannot resolve")?[0],
@@ -144,7 +152,7 @@ async fn client_main(args: ClientArgs) -> anyhow::Result<()> {
         Default::default(),
     );
     cfg.shard_count = 16;
-    cfg.reset_interval = Some(Duration::from_secs(10));
+    cfg.reset_interval = Some(Duration::from_secs(100));
     let session = cfg.connect().await.context("cannot connect to sosistab")?;
     eprintln!("Session established in {:?}", start.elapsed());
     let mux = sosistab::Multiplex::new(session);
@@ -173,12 +181,16 @@ async fn client_main(args: ClientArgs) -> anyhow::Result<()> {
 }
 
 async fn server_main(args: ServerArgs) -> anyhow::Result<()> {
-    let listener =
+    let listener_udp =
         sosistab::Listener::listen_udp(args.listen, SNAKEOIL_SK.clone(), |_, _| (), |_, _| ())
             .await?;
+    let listener_tcp =
+        sosistab::Listener::listen_tcp(args.listen, SNAKEOIL_SK.clone(), |_, _| (), |_, _| ())
+            .await?;
     for count in 1u128.. {
-        let session = listener
+        let session = listener_udp
             .accept_session()
+            .race(listener_tcp.accept_session())
             .await
             .ok_or_else(|| anyhow::anyhow!("failed to accept"))?;
         eprintln!("accepted session {}", count);
