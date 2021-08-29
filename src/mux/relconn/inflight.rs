@@ -1,6 +1,6 @@
 use crate::mux::structs::*;
 use std::{
-    collections::{btree_map::Entry, BTreeMap, BTreeSet},
+    collections::{btree_map::Entry, BTreeMap},
     time::{Duration, Instant},
 };
 
@@ -9,7 +9,7 @@ use self::calc::RttCalculator;
 mod calc;
 
 /// "Slack time" for fast retransmits
-const FAST_RETRANSMIT_DELAY: Duration = Duration::from_millis(30);
+const FAST_RETRANSMIT_DELAY: Duration = Duration::from_millis(10);
 
 #[derive(Debug, Clone)]
 /// An element of Inflight.
@@ -111,23 +111,24 @@ impl Inflight {
             if seg.known_lost {
                 self.lost_count -= 1;
             }
-            // // mark as lost everything below
-            // let mark_as_lost: Vec<u64> = self
-            //     .segments
-            //     .keys()
-            //     .take_while(|f| **f < seqno)
-            //     .copied()
-            //     .collect();
-            // let new_time = Instant::now() + self.rtt_var() * 2 + FAST_RETRANSMIT_DELAY;
-            // for seqno in mark_as_lost {
-            //     let old_retrans_time = self.segments.get_mut(&seqno).unwrap().retrans_time;
-            //     if old_retrans_time > new_time {
-            //         // tracing::debug!("EARLY retransmit for lost segment {}", seqno);
-            //         self.segments.get_mut(&seqno).unwrap().retrans_time = new_time;
-            //         self.remove_rto(old_retrans_time, seqno);
-            //         self.rtos.entry(new_time).or_default().push(seqno)
-            //     }
-            // }
+            // mark as lost everything below
+            let mark_as_lost: Vec<u64> = self
+                .segments
+                .keys()
+                .take_while(|f| **f < seqno)
+                .copied()
+                .collect();
+            let new_time = Instant::now() + self.rtt_var() * 2 + FAST_RETRANSMIT_DELAY;
+            for seqno in mark_as_lost {
+                let seg = self.segments.get_mut(&seqno).unwrap();
+                let old_retrans_time = seg.retrans_time;
+                if old_retrans_time > new_time && seg.retrans == 0 {
+                    // tracing::debug!("EARLY retransmit for lost segment {}", seqno);
+                    seg.retrans_time = new_time;
+                    self.remove_rto(old_retrans_time, seqno);
+                    self.rtos.entry(new_time).or_default().push(seqno)
+                }
+            }
             true
         } else {
             false

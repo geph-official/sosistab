@@ -151,7 +151,7 @@ async fn client_main(args: ClientArgs) -> anyhow::Result<()> {
         (&*SNAKEOIL_SK).into(),
         Default::default(),
     );
-    cfg.shard_count = 16;
+    cfg.shard_count = 8;
     cfg.reset_interval = Some(Duration::from_secs(100));
     let session = cfg.connect().await.context("cannot connect to sosistab")?;
     eprintln!("Session established in {:?}", start.elapsed());
