@@ -144,13 +144,12 @@ impl ConnVars {
             })) => {
                 let seqnos = safe_deserialize::<Vec<Seqno>>(&payload)?;
                 tracing::trace!("new ACK pkt with {} seqnos", seqnos.len());
+                self.inflight.mark_acked_lt(seqno);
                 for seqno in seqnos {
                     self.lost_seqnos.retain(|v| *v != seqno);
-                    if self.inflight.mark_acked(seqno) {
-                        self.cc.mark_ack();
-                    }
+                    self.cc.mark_ack();
+                    self.inflight.mark_acked(seqno);
                 }
-                self.inflight.mark_acked_lt(seqno);
                 self.check_closed()?;
                 Ok(())
             }

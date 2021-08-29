@@ -176,7 +176,7 @@ async fn client_backhaul_once(
 
         match smol::future::race(down, up).await {
             Ok(Evt::Incoming(bts)) => {
-                tracing::debug!("received on shard {}", shard_id);
+                tracing::trace!("received on shard {}", shard_id);
                 for bts in bts {
                     let _ = session_back.inject_incoming(&bts);
                 }

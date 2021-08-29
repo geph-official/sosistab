@@ -1,17 +1,18 @@
-use crate::{buffer::Buff, fec::FrameEncoder, pacer::Pacer};
+use crate::{
+    buffer::Buff,
+    dejitter::{dejitter, DejitterRecv, DejitterSend},
+    fec::FrameEncoder,
+};
 use crate::{crypt::AeadError, mux::Multiplex, runtime, StatsGatherer};
 use crate::{crypt::NgAead, protocol::DataFrameV2};
 use machine::RecvMachine;
 use parking_lot::Mutex;
 use rloss::RecvLossCalc;
-use smol::channel::{Receiver, Sender, TrySendError};
+use smol::channel::{Receiver, Sender};
 use smol::prelude::*;
 use stats::StatsCalculator;
 
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{sync::Arc, time::Duration};
 use thiserror::Error;
 mod machine;
 mod rloss;
@@ -42,7 +43,7 @@ pub enum SessionError {
 /// [Session] should be used directly only if an unreliable connection is all you need. For most applications, use [Multiplex](crate::mux::Multiplex), which wraps a [Session] and provides QUIC-like reliable streams as well as unreliable messages, all multiplexed over a single [Session].
 pub struct Session {
     send_tosend: Sender<Buff>,
-    recv_decoded: Receiver<Buff>,
+    recv_decoded: DejitterRecv<Buff>,
     statistics: Arc<StatsGatherer>,
     dropper: Vec<Box<dyn FnOnce() + Send + Sync + 'static>>,
     _task: smol::Task<()>,
@@ -70,7 +71,7 @@ impl Session {
             cfg.role,
         ));
 
-        let (send_decoded, recv_decoded) = smol::channel::unbounded();
+        let (send_decoded, recv_decoded) = dejitter();
         let (send_outgoing, recv_outgoing) = smol::channel::bounded(1024);
         let session_back = SessionBack {
             machine,
@@ -114,7 +115,6 @@ impl Session {
         self.statistics
             .increment("total_sent_bytes", to_send.len() as f32);
         if self.send_tosend.send(to_send).await.is_err() {
-            self.recv_decoded.close();
             Err(SessionError::SessionDropped)
         } else {
             Ok(())
@@ -123,11 +123,7 @@ impl Session {
 
     /// Waits until the next application input is decoded by the session.
     pub async fn recv_bytes(&self) -> Result<Buff, SessionError> {
-        let recv = self
-            .recv_decoded
-            .recv()
-            .await
-            .map_err(|_| SessionError::SessionDropped)?;
+        let (recv, _) = self.recv_decoded.recv().await;
         self.statistics
             .increment("total_recv_bytes", recv.len() as f32);
         Ok(recv)
@@ -142,7 +138,7 @@ impl Session {
 /// "Back side" of a Session.
 pub(crate) struct SessionBack {
     machine: Mutex<RecvMachine>,
-    send_decoded: Sender<Buff>,
+    send_decoded: DejitterSend<Buff>,
     recv_outgoing: Receiver<Buff>,
 }
 
@@ -151,8 +147,8 @@ impl SessionBack {
     pub fn inject_incoming(&self, pkt: &[u8]) -> Result<(), AeadError> {
         let decoded = self.machine.lock().process(pkt)?;
         if let Some(decoded) = decoded {
-            for decoded in decoded {
-                let _ = self.send_decoded.try_send(decoded);
+            for (decoded, seqno) in decoded {
+                let _ = self.send_decoded.send(decoded, seqno);
             }
         }
         Ok(())
