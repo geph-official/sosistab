@@ -194,7 +194,7 @@ impl Inflight {
     }
     /// Retransmits a particular seqno, clearing the "known lost" flag on the way.
     pub fn retransmit(&mut self, seqno: Seqno) -> Option<Message> {
-        tracing::warn!("retransmit {}", seqno);
+        // tracing::d!("retransmit {}", seqno);
         let rto = self.rtt.rto();
         let (payload, old_retrans, new_retrans) = {
             let entry = self.segments.get_mut(&seqno);
