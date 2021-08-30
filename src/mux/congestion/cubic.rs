@@ -26,7 +26,7 @@ impl Cubic {
     fn recalculate_cwnd(&mut self) {
         if let Some(last_loss) = self.last_loss {
             let kay = (self.cwnd_max * (1.0 - self.beta) / self.cee).powf(0.3333);
-            self.cwnd = (self.cee * (last_loss.elapsed().as_secs_f64() * 3.0 - kay).powi(3)
+            self.cwnd = (self.cee * (last_loss.elapsed().as_secs_f64() * 1.5 - kay).powi(3)
                 + self.cwnd_max)
                 .max(4.0);
         }
@@ -41,7 +41,7 @@ impl CongestionControl for Cubic {
     fn mark_ack(&mut self) {
         // tracing::debug!("ack => {:.2}", self.cwnd);
         // if no last_loss, just exponentially increase
-        let max_cwnd = self.cwnd + 1.0;
+        let max_cwnd = self.cwnd + (1.0f64).min(256.0 / self.cwnd);
         self.cwnd = max_cwnd;
         // recalculate; if there's a last loss this will fix things
         self.recalculate_cwnd();

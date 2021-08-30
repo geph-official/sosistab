@@ -90,43 +90,49 @@ impl Inflight {
     }
 
     /// Marks a particular inflight packet as acknowledged. Returns whether or not there was actually such an inflight packet.
-    pub fn mark_acked(&mut self, seqno: Seqno) -> bool {
+    pub fn mark_acked(&mut self, acked_seqno: Seqno) -> bool {
         let now = Instant::now();
 
-        if let Some(seg) = self.segments.remove(&seqno) {
-            if seg.retrans == 0 {
+        if let Some(acked_seg) = self.segments.remove(&acked_seqno) {
+            if acked_seg.retrans == 0 {
                 self.rtt
-                    .record_sample(now.saturating_duration_since(seg.send_time))
+                    .record_sample(now.saturating_duration_since(acked_seg.send_time))
             }
             // remove from rtos
-            let rto_entry = self.rtos.entry(seg.retrans_time);
+            let rto_entry = self.rtos.entry(acked_seg.retrans_time);
             if let Entry::Occupied(mut o) = rto_entry {
-                o.get_mut().retain(|v| *v != seqno);
+                o.get_mut().retain(|v| *v != acked_seqno);
                 if o.get().is_empty() {
                     o.remove();
                 }
             } else {
                 panic!("shouldn't happen")
             }
-            if seg.known_lost {
+            if acked_seg.known_lost {
                 self.lost_count -= 1;
             }
             // mark as lost everything below
             let mark_as_lost: Vec<u64> = self
                 .segments
                 .keys()
-                .take_while(|f| **f < seqno)
+                .take_while(|f| **f < acked_seqno)
                 .copied()
                 .collect();
-            let new_time = Instant::now() + self.rtt_var() * 2 + FAST_RETRANSMIT_DELAY;
+            let now = Instant::now();
+            let fast_retrans_thresh = self.rtt_var().max(self.min_rtt() / 4);
+            // dbg!(fast_retrans_thresh);
             for seqno in mark_as_lost {
                 let seg = self.segments.get_mut(&seqno).unwrap();
-                let old_retrans_time = seg.retrans_time;
-                if old_retrans_time > new_time && seg.retrans == 0 {
+                // if send time was in the past far enough, retransmit
+                if seg.retrans == 0
+                    && acked_seg.send_time.saturating_duration_since(seg.send_time)
+                        > fast_retrans_thresh
+                    && seqno + 3 >= acked_seqno
+                {
                     // tracing::debug!("EARLY retransmit for lost segment {}", seqno);
-                    seg.retrans_time = new_time;
+                    let old_retrans_time = std::mem::replace(&mut seg.retrans_time, now);
                     self.remove_rto(old_retrans_time, seqno);
-                    self.rtos.entry(new_time).or_default().push(seqno)
+                    self.rtos.entry(now).or_default().push(seqno)
                 }
             }
             true

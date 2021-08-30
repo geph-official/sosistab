@@ -10,7 +10,7 @@ use smol::channel::Receiver;
 use crate::{
     buffer::{Buff, BuffMut},
     mux::{
-        congestion::{CongestionControl, Highspeed},
+        congestion::{CongestionControl, Cubic, Highspeed},
         structs::*,
     },
     pacer::Pacer,
@@ -60,9 +60,9 @@ impl Default for ConnVars {
             // next_pace_time: Instant::now(),
             lost_seqnos: Vec::new(),
             last_loss: None,
-            // cc: Box::new(Cubic::new(0.7, 0.4)),
+            cc: Box::new(Cubic::new(0.7, 0.4)),
             pacer: Pacer::new(Duration::from_millis(1)),
-            cc: Box::new(Highspeed::new(3)),
+            // cc: Box::new(Highspeed::new(3)),
             // cc: Box::new(Trivial::new(400)),
         }
     }
@@ -121,7 +121,7 @@ impl ConnVars {
                 );
                 let now = Instant::now();
                 if let Some(old) = self.last_loss {
-                    if now.saturating_duration_since(old) > self.inflight.rto() {
+                    if now.saturating_duration_since(old) > self.inflight.min_rtt() {
                         self.cc.mark_loss();
                         self.last_loss = Some(now);
                     }
