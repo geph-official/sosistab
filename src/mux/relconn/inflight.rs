@@ -8,9 +8,6 @@ use self::calc::RttCalculator;
 
 mod calc;
 
-/// "Slack time" for fast retransmits
-const FAST_RETRANSMIT_DELAY: Duration = Duration::from_millis(30);
-
 #[derive(Debug, Clone)]
 /// An element of Inflight.
 pub struct InflightEntry {
@@ -28,9 +25,10 @@ pub struct InflightEntry {
 pub struct Inflight {
     segments: BTreeMap<Seqno, InflightEntry>,
     rtos: BTreeMap<Instant, Vec<Seqno>>,
-    // early_rtx: BTreeMap<Seqno, Instant>,
     lost_count: usize,
     rtt: RttCalculator,
+    max_inversion: u64,
+    max_acked: u64,
 }
 
 impl Inflight {
@@ -41,6 +39,8 @@ impl Inflight {
             rtos: Default::default(),
             rtt: Default::default(),
             lost_count: 0,
+            max_inversion: 3,
+            max_acked: 0,
         }
     }
 
@@ -74,7 +74,7 @@ impl Inflight {
     }
 
     /// Mark all inflight packets less than a certain sequence number as acknowledged.
-    pub fn mark_acked_lt(&mut self, seqno: Seqno) {
+    pub fn mark_acked_lt(&mut self, seqno: Seqno) -> usize {
         let mut to_remove = vec![];
         for (k, _) in self.segments.iter() {
             if *k < seqno {
@@ -84,9 +84,11 @@ impl Inflight {
                 break;
             }
         }
+        let mut sum = 0;
         for seqno in to_remove {
-            self.mark_acked(seqno);
+            sum += if self.mark_acked(seqno) { 1 } else { 0 };
         }
+        sum
     }
 
     /// Marks a particular inflight packet as acknowledged. Returns whether or not there was actually such an inflight packet.
@@ -95,8 +97,13 @@ impl Inflight {
 
         if let Some(acked_seg) = self.segments.remove(&acked_seqno) {
             if acked_seg.retrans == 0 {
+                self.max_acked = acked_seqno.max(self.max_acked);
                 self.rtt
-                    .record_sample(now.saturating_duration_since(acked_seg.send_time))
+                    .record_sample(now.saturating_duration_since(acked_seg.send_time));
+                self.max_inversion = self
+                    .max_acked
+                    .saturating_sub(acked_seqno)
+                    .max(self.max_inversion);
             }
             // remove from rtos
             let rto_entry = self.rtos.entry(acked_seg.retrans_time);
@@ -119,20 +126,21 @@ impl Inflight {
                 .copied()
                 .collect();
             let now = Instant::now();
-            let fast_retrans_thresh = self.rtt_var().max(self.min_rtt() / 4);
-            // dbg!(fast_retrans_thresh);
             for seqno in mark_as_lost {
                 let seg = self.segments.get_mut(&seqno).unwrap();
                 // if send time was in the past far enough, retransmit
                 if seg.retrans == 0
-                    && acked_seg.send_time.saturating_duration_since(seg.send_time)
-                        > fast_retrans_thresh
-                    && seqno + 3 >= acked_seqno
+                    && seqno + self.max_inversion * 2 <= acked_seqno
+                    && seg.retrans_time > now
                 {
-                    // tracing::debug!("EARLY retransmit for lost segment {}", seqno);
+                    tracing::debug!(
+                        "EARLY retransmit for lost segment {} due to ack of {}",
+                        seqno,
+                        acked_seqno
+                    );
                     let old_retrans_time = std::mem::replace(&mut seg.retrans_time, now);
                     self.remove_rto(old_retrans_time, seqno);
-                    self.rtos.entry(now).or_default().push(seqno)
+                    self.rtos.entry(now).or_default().push(seqno);
                 }
             }
             true
@@ -161,7 +169,7 @@ impl Inflight {
         let now = Instant::now();
         let rto_duration = self.rtt.rto();
         let rto = now + rto_duration;
-        self.segments.insert(
+        let prev = self.segments.insert(
             seqno,
             InflightEntry {
                 seqno,
@@ -172,6 +180,7 @@ impl Inflight {
                 known_lost: false,
             },
         );
+        assert!(prev.is_none());
         // we insert into RTOs.
         self.rtos.entry(rto).or_default().push(seqno);
     }
@@ -185,6 +194,7 @@ impl Inflight {
     }
     /// Retransmits a particular seqno, clearing the "known lost" flag on the way.
     pub fn retransmit(&mut self, seqno: Seqno) -> Option<Message> {
+        tracing::warn!("retransmit {}", seqno);
         let rto = self.rtt.rto();
         let (payload, old_retrans, new_retrans) = {
             let entry = self.segments.get_mut(&seqno);
@@ -206,6 +216,7 @@ impl Inflight {
         }
         self.rtos.entry(new_retrans).or_default().push(seqno);
         self.lost_count -= 1;
+
         Some(payload)
     }
 

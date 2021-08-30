@@ -10,7 +10,7 @@ use smol::channel::Receiver;
 use crate::{
     buffer::{Buff, BuffMut},
     mux::{
-        congestion::{CongestionControl, Cubic, Highspeed},
+        congestion::{CongestionControl, Highspeed},
         structs::*,
     },
     pacer::Pacer,
@@ -60,9 +60,9 @@ impl Default for ConnVars {
             // next_pace_time: Instant::now(),
             lost_seqnos: Vec::new(),
             last_loss: None,
-            cc: Box::new(Cubic::new(0.7, 0.4)),
+            // cc: Box::new(Cubic::new(0.7, 0.4)),
             pacer: Pacer::new(Duration::from_millis(1)),
-            // cc: Box::new(Highspeed::new(3)),
+            cc: Box::new(Highspeed::new(3)),
             // cc: Box::new(Trivial::new(400)),
         }
     }
@@ -143,14 +143,17 @@ impl ConnVars {
                 ..
             })) => {
                 let seqnos = safe_deserialize::<Vec<Seqno>>(&payload)?;
-                tracing::trace!("new ACK pkt with {} seqnos", seqnos.len());
+                // tracing::trace!("new ACK pkt with {} seqnos", seqnos.len());
+                for _ in 0..self.inflight.mark_acked_lt(seqno) {
+                    self.cc.mark_ack()
+                }
+                self.lost_seqnos.retain(|v| *v > seqno);
                 for seqno in seqnos {
                     self.lost_seqnos.retain(|v| *v != seqno);
                     if self.inflight.mark_acked(seqno) {
                         self.cc.mark_ack();
                     }
                 }
-                self.inflight.mark_acked_lt(seqno);
                 self.check_closed()?;
                 Ok(())
             }
@@ -280,7 +283,9 @@ impl ConnVars {
         let first_rto = self.inflight.first_rto();
         let rto_timeout = async move {
             let (rto_seqno, rto_time) = first_rto.unwrap();
-            smol::Timer::at(rto_time).await;
+            if rto_time > Instant::now() {
+                smol::Timer::at(rto_time).await;
+            }
             Ok::<ConnVarEvt, anyhow::Error>(ConnVarEvt::Rto(rto_seqno))
         }
         .pending_unless(first_rto.is_some());
@@ -331,13 +336,17 @@ impl ConnVars {
         };
         let retransmit = async { Ok(ConnVarEvt::Retransmit(first_retrans.unwrap())) }
             .pending_unless(first_retrans.is_some());
-        ack_timer
-            .or(retransmit.or(new_pkt.or(new_write.or(rto_timeout.or(final_timeout)))))
+        rto_timeout
+            .or(retransmit)
+            .or(ack_timer)
+            .or(final_timeout)
+            .or(new_pkt)
+            .or(new_write)
             .await
     }
 
     fn pacing_rate(&self) -> f64 {
         // calculate implicit rate
-        (self.cc.cwnd() as f64 / self.inflight.min_rtt().as_secs_f64()).max(1000.0)
+        (self.cc.cwnd() as f64 / self.inflight.min_rtt().as_secs_f64()).max(100.0)
     }
 }

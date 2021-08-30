@@ -44,6 +44,7 @@ impl<T: Clone> Default for Reorderer<T> {
     }
 }
 impl<T: Clone> Reorderer<T> {
+    /// Inserts an item into the reorderer. Returns true iff the item is accepted or has been accepted in the past.
     pub fn insert(&mut self, seq: Seqno, item: T) -> bool {
         if seq >= self.min && seq <= self.min + 20000 {
             if self.pkts.insert(seq, item).is_some() {
@@ -52,7 +53,8 @@ impl<T: Clone> Reorderer<T> {
             true
         } else {
             tracing::debug!("rejecting (seq={}, min={})", seq, self.min);
-            false
+            // if less than min, we still accept
+            seq < self.min
         }
     }
     pub fn take(&mut self) -> Vec<T> {
