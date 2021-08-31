@@ -13,7 +13,7 @@ impl Highspeed {
     /// Creates a new HSTCP instance with the given increment.
     pub fn new(multiplier: usize) -> Self {
         Self {
-            cwnd: 1.0,
+            cwnd: 32.0,
             multiplier,
             last_loss: Instant::now(),
         }

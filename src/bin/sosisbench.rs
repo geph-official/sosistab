@@ -152,7 +152,7 @@ async fn client_main(args: ClientArgs) -> anyhow::Result<()> {
         Default::default(),
     );
     cfg.shard_count = 8;
-    cfg.reset_interval = Some(Duration::from_secs(100));
+    cfg.reset_interval = Some(Duration::from_secs(3));
     let session = cfg.connect().await.context("cannot connect to sosistab")?;
     eprintln!("Session established in {:?}", start.elapsed());
     let mux = sosistab::Multiplex::new(session);

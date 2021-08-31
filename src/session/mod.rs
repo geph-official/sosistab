@@ -113,7 +113,6 @@ impl Session {
         let to_send: Buff = to_send.into();
         self.statistics
             .increment("total_sent_bytes", to_send.len() as f32);
-        smol::future::yield_now().await;
         if let Err(TrySendError::Closed(_)) = self.send_tosend.try_send(to_send) {
             self.recv_decoded.close();
             Err(SessionError::SessionDropped)

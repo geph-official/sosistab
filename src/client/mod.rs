@@ -5,6 +5,7 @@ use smol::{future::Boxed, net::TcpStream};
 use crate::{runtime, tcp::TcpClientBackhaul, Session, StatsGatherer};
 
 mod inner;
+mod worker;
 
 /// Configuration of a client.
 #[derive(Clone)]

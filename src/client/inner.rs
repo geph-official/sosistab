@@ -2,12 +2,15 @@ use crate::{buffer::Buff, crypt};
 use crate::{protocol, runtime, Backhaul, Session, SessionBack, SessionConfig, StatsGatherer};
 use anyhow::Context;
 use rand::prelude::*;
-use smol::prelude::*;
+use smol::{prelude::*, Task};
 use std::{
+    collections::VecDeque,
     net::SocketAddr,
     sync::Arc,
     time::{Duration, Instant},
 };
+
+use super::worker::ClientWorker;
 
 /// Configures the client.
 #[derive(Clone)]
@@ -22,7 +25,6 @@ pub(crate) struct LowlevelClientConfig {
 
 /// Connects to a remote server, given a closure that generates socket addresses.
 pub(crate) async fn connect_custom(cfg: LowlevelClientConfig) -> std::io::Result<Session> {
-    let backhaul = (cfg.backhaul_gen)();
     let my_long_sk = x25519_dalek::StaticSecret::new(&mut rand::thread_rng());
     let my_eph_sk = x25519_dalek::StaticSecret::new(&mut rand::thread_rng());
     // do the handshake
@@ -33,6 +35,7 @@ pub(crate) async fn connect_custom(cfg: LowlevelClientConfig) -> std::io::Result
         version: VERSION,
     };
     for timeout_factor in (0u32..).map(|x| 2u64.pow(x)) {
+        let backhaul = (cfg.backhaul_gen)();
         // send hello
         let init_hello = crypt::LegacyAead::new(&cookie.generate_c2s().next().unwrap())
             .pad_encrypt_v1(std::slice::from_ref(&init_hello), 1000);
@@ -105,145 +108,62 @@ fn init_session(
         role: crate::Role::Client,
     });
     let back = Arc::new(back);
-    let backhaul_tasks: Vec<_> = (0..cfg.num_shards)
-        .map(|i| {
-            runtime::spawn(client_backhaul_once(
-                cookie.clone(),
-                resume_token.clone(),
-                back.clone(),
-                i as u8,
-                cfg.clone(),
-            ))
-        })
-        .collect();
-    session.on_drop(move || {
-        drop(backhaul_tasks);
-    });
-    session
-}
-
-#[allow(clippy::all)]
-async fn client_backhaul_once(
-    cookie: crypt::Cookie,
-    resume_token: Buff,
-    session_back: Arc<SessionBack>,
-    shard_id: u8,
-    cfg: LowlevelClientConfig,
-) -> Option<()> {
-    let mut last_reset = Instant::now();
-    let mut updated = false;
-    let mut socket: Arc<dyn Backhaul> = (cfg.backhaul_gen)();
-    // let mut _old_cleanup: Option<smol::Task<Option<()>>> = None;
-
-    #[derive(Debug)]
-    enum Evt {
-        Incoming(Vec<Buff>),
-        Outgoing(Buff),
-    }
-
-    let mut my_reset_millis = cfg.reset_interval.map(|interval| {
-        rand::thread_rng().gen_range(interval.as_millis() / 2, interval.as_millis())
-    });
-
-    // last remind time
-    let mut last_remind: Option<Instant> = None;
-
-    loop {
-        let down = {
-            let socket = &socket;
-            async move {
-                let packets = socket
-                    .recv_from_many()
-                    .await
-                    .context("cannot receive from socket")?;
-                if packets.len() > 1 {
-                    tracing::trace!(
-                        "received {} packets from {:?}",
-                        packets.len(),
-                        packets.get(0).map(|v| v.1)
-                    );
+    let uploader: Task<anyhow::Result<()>> = runtime::spawn(async move {
+        let mut workers: Vec<ClientWorker> = (0..cfg.num_shards)
+            .map(|shard_id| {
+                ClientWorker::start(
+                    cookie.clone(),
+                    resume_token.clone(),
+                    back.clone(),
+                    shard_id as u8,
+                    cfg.clone(),
+                )
+            })
+            .collect();
+        let mut fired_workers: VecDeque<ClientWorker> = VecDeque::new();
+        let mut last_reset = Instant::now();
+        loop {
+            let to_upload = back.next_outgoing().await?;
+            let random_worker = rand::random::<usize>() % workers.len();
+            tracing::trace!("picked random worker {}", random_worker);
+            workers[random_worker].send_upload(to_upload).await;
+            if cfg
+                .reset_interval
+                .map(|dur| last_reset.elapsed() > dur)
+                .unwrap_or_default()
+            {
+                tracing::debug!("reset timer expired!");
+                last_reset = Instant::now();
+                // find the worst worker and fire it
+                let worst_worker_id = workers
+                    .iter()
+                    .enumerate()
+                    .min_by_key(|(worker_id, worker)| {
+                        let count = worker.get_received_count();
+                        tracing::debug!("worker {} has {}", worker_id, count);
+                        worker.reset_received_count();
+                        count
+                    })
+                    .map(|x| x.0)
+                    .expect("must have a worst worker");
+                tracing::debug!("replacing worst worker {}", worst_worker_id);
+                let new_worker = ClientWorker::start(
+                    cookie.clone(),
+                    resume_token.clone(),
+                    back.clone(),
+                    worst_worker_id as u8,
+                    cfg.clone(),
+                );
+                let worst_worker = std::mem::replace(&mut workers[worst_worker_id], new_worker);
+                fired_workers.push_back(worst_worker);
+                if fired_workers.len() > workers.len() {
+                    fired_workers.pop_front();
                 }
-                Ok::<_, anyhow::Error>(Evt::Incoming(packets.into_iter().map(|v| v.0).collect()))
-            }
-        };
-        let up = async {
-            let raw_upload = session_back
-                .next_outgoing()
-                .await
-                .context("cannot read out of session_back")?;
-            Ok::<_, anyhow::Error>(Evt::Outgoing(raw_upload))
-        };
-
-        match smol::future::race(down, up).await {
-            Ok(Evt::Incoming(bts)) => {
-                tracing::trace!("received on shard {}", shard_id);
-                for bts in bts {
-                    let _ = session_back.inject_incoming(&bts);
-                }
-            }
-            Ok(Evt::Outgoing(bts)) => {
-                let bts: Buff = bts;
-                let now = Instant::now();
-                if last_remind
-                    .map(|f| now.saturating_duration_since(f) > Duration::from_secs(3))
-                    .unwrap_or_default()
-                    || !updated
-                {
-                    updated = true;
-                    last_remind = Some(now);
-                    let g_encrypt = crypt::LegacyAead::new(&cookie.generate_c2s().next().unwrap());
-                    if let Some(reset_millis) = my_reset_millis {
-                        if now.saturating_duration_since(last_reset).as_millis() > reset_millis {
-                            my_reset_millis = cfg.reset_interval.map(|interval| {
-                                rand::thread_rng()
-                                    .gen_range(interval.as_millis() / 2, interval.as_millis())
-                            });
-                            last_reset = now;
-                            // also replace the UDP socket!
-                            let old_socket = socket.clone();
-                            let session_back = session_back.clone();
-                            // spawn a task to clean up the UDP socket
-                            let tata: smol::Task<Option<()>> = runtime::spawn(
-                                async move {
-                                    loop {
-                                        let bufs = old_socket.recv_from_many().await.ok()?;
-                                        for (buf, _) in bufs {
-                                            session_back.inject_incoming(&buf).ok()?
-                                        }
-                                    }
-                                }
-                                .or(async {
-                                    smol::Timer::after(Duration::from_secs(60)).await;
-                                    None
-                                }),
-                            );
-                            tata.detach();
-                            socket = (cfg.backhaul_gen)()
-                        }
-                    }
-                    drop(
-                        socket
-                            .send_to(
-                                g_encrypt.pad_encrypt_v1(
-                                    &[protocol::HandshakeFrame::ClientResume {
-                                        resume_token: resume_token.clone(),
-                                        shard_id,
-                                    }],
-                                    1000,
-                                ),
-                                cfg.server_addr,
-                            )
-                            .await,
-                    );
-                }
-                if let Err(err) = socket.send_to(bts, cfg.server_addr).await {
-                    tracing::error!("error sending packet: {:?}", err)
-                }
-            }
-            Err(err) => {
-                tracing::error!("FATAL error in down/up: {:?}", err);
-                return None;
             }
         }
-    }
+    });
+    session.on_drop(move || {
+        drop(uploader);
+    });
+    session
 }
