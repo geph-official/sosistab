@@ -19,9 +19,6 @@ pub struct FrameDecoder {
 impl FrameDecoder {
     #[tracing::instrument(level = "trace")]
     pub fn new(data_shards: usize, parity_shards: usize) -> Self {
-        // if rand::random::<f64>() < 0.1 {
-        tracing::trace!("decoding with {}/{}", data_shards, parity_shards);
-        // }
         FrameDecoder {
             data_shards,
             parity_shards,
@@ -35,6 +32,9 @@ impl FrameDecoder {
 
     #[tracing::instrument(level = "trace", skip(self, pkt))]
     pub fn decode(&mut self, pkt: &[u8], pkt_idx: usize) -> Option<Vec<Buff>> {
+        // if rand::random::<f64>() < 0.1 {
+        //     tracing::debug!("decoding with {}/{}", self.data_shards, self.parity_shards);
+        // }
         // if we don't have parity shards, don't touch anything
         if self.parity_shards == 0 {
             self.done = true;

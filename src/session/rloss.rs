@@ -80,7 +80,7 @@ impl RecvLossCalc {
             .saturating_duration_since(self.last_loss_update)
             .as_secs_f64()
             > self.window
-            && self.good_count > 100.0
+            && self.good_count > 10.0
         {
             tracing::debug!("recording loss {}", loss);
             self.loss_samples.push_back(loss.into());

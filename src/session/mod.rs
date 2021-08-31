@@ -59,7 +59,7 @@ impl Drop for Session {
 impl Session {
     /// Creates a Session.
     pub(crate) fn new(cfg: SessionConfig) -> (Self, SessionBack) {
-        let (send_tosend, recv_tosend) = smol::channel::bounded(1024);
+        let (send_tosend, recv_tosend) = smol::channel::bounded(2048);
         let gather = cfg.gather.clone();
         let calculator = Arc::new(StatsCalculator::new(gather.clone()));
         let rloss = Arc::new(Mutex::new(RecvLossCalc::new(1.0)));
@@ -113,7 +113,8 @@ impl Session {
         let to_send: Buff = to_send.into();
         self.statistics
             .increment("total_sent_bytes", to_send.len() as f32);
-        if self.send_tosend.send(to_send).await.is_err() {
+        smol::future::yield_now().await;
+        if let Err(TrySendError::Closed(_)) = self.send_tosend.try_send(to_send) {
             self.recv_decoded.close();
             Err(SessionError::SessionDropped)
         } else {
@@ -188,11 +189,11 @@ async fn session_send_loop(ctx: SessionSendCtx) {
     }
 }
 
-const BURST_SIZE: usize = 40;
+const BURST_SIZE: usize = 64;
 
 #[tracing::instrument(skip(ctx))]
 async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<()> {
-    // let mut pacer = Pacer::new(Duration::from_millis(1));
+    let mut pacer = Pacer::new(Duration::from_millis(1) / 20);
     enum Event {
         NewPayload(Buff),
         FecTimeout,
@@ -242,6 +243,7 @@ async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<
                 frame_no += 1;
                 // reset fec timer
                 fec_timer.set_after(Duration::from_millis(FEC_TIMEOUT_MS));
+                pacer.wait_next().await;
             }
             // we have something to send, as a FEC packet.
             Event::FecTimeout => {
@@ -283,7 +285,7 @@ async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<
                     let send_encrypted = ctx.send_crypt.encrypt(&send_padded);
                     ctx.send_outgoing.send(send_encrypted).await.ok()?;
                     // // Pace the FEC packets!
-                    // pacer.wait_next().await;
+                    pacer.wait_next().await;
                     // pacer.set_interval(Duration::from_secs_f64(0.5 / ctx.statg.max_pps()));
                 }
             }

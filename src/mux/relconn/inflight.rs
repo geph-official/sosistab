@@ -27,8 +27,8 @@ pub struct Inflight {
     rtos: BTreeMap<Instant, Vec<Seqno>>,
     lost_count: usize,
     rtt: RttCalculator,
-    max_inversion: u64,
-    max_acked: u64,
+    max_inversion: Duration,
+    max_acked_sendtime: Instant,
 }
 
 impl Inflight {
@@ -39,8 +39,8 @@ impl Inflight {
             rtos: Default::default(),
             rtt: Default::default(),
             lost_count: 0,
-            max_inversion: 3,
-            max_acked: 0,
+            max_inversion: Duration::from_millis(1),
+            max_acked_sendtime: Instant::now(),
         }
     }
 
@@ -97,12 +97,12 @@ impl Inflight {
 
         if let Some(acked_seg) = self.segments.remove(&acked_seqno) {
             if acked_seg.retrans == 0 {
-                self.max_acked = acked_seqno.max(self.max_acked);
+                self.max_acked_sendtime = acked_seg.send_time.max(self.max_acked_sendtime);
                 self.rtt
                     .record_sample(now.saturating_duration_since(acked_seg.send_time));
                 self.max_inversion = self
-                    .max_acked
-                    .saturating_sub(acked_seqno)
+                    .max_acked_sendtime
+                    .saturating_duration_since(acked_seg.send_time)
                     .max(self.max_inversion);
             }
             // remove from rtos
@@ -130,7 +130,7 @@ impl Inflight {
                 let seg = self.segments.get_mut(&seqno).unwrap();
                 // if send time was in the past far enough, retransmit
                 if seg.retrans == 0
-                    && seqno + self.max_inversion * 2 <= acked_seqno
+                    && seg.retrans_time + self.max_inversion * 2 <= acked_seg.retrans_time
                     && seg.retrans_time > now
                 {
                     tracing::debug!(
