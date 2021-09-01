@@ -82,8 +82,8 @@ impl Backhaul for Async<UdpSocket> {
         if to_send.len() > 1472 {
             tracing::warn!("dropping oversize packet of length {}", to_send.len());
         } else {
-            // self.send_to(&to_send, dest).await?;
-            self.get_ref().send_to(&to_send, dest)?;
+            self.send_to(&to_send, dest).await?;
+            // self.get_ref().send_to(&to_send, dest)?;
         }
         Ok(())
     }
