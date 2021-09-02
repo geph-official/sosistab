@@ -35,7 +35,7 @@ anyhow= "1.0.37"
 scopeguard= "1.1.0"
 reed-solomon-erasure={version="4.0.2"}
 indexmap= "1.6.1"
-bloomfilter = "1.0.3"
+bloomfilter = {version="1.0.7", features=["random"]}
 concurrent-queue= "1.2.2"
 rand_chacha="0.2"
 rtrb="0.1"
