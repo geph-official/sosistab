@@ -1,6 +1,46 @@
 use std::time::SystemTime;
 
 use dashmap::DashMap;
+use probability::distribution::Inverse;
+
+/// Exponential moving average and standard deviation calculator
+#[derive(Debug, Clone)]
+pub struct EmaCalculator {
+    mean_accum: f64,
+    variance_accum: f64,
+    alpha: f64,
+}
+
+impl EmaCalculator {
+    /// Creates a new calculator with the given initial estimate and smoothing factor (which should be close to 0)
+    pub fn new(initial_mean: f64, alpha: f64) -> Self {
+        Self {
+            mean_accum: initial_mean,
+            variance_accum: 0.0,
+            alpha,
+        }
+    }
+
+    /// Updates the calculator with a given data point
+    pub fn update(&mut self, point: f64) {
+        // https://stats.stackexchange.com/questions/111851/standard-deviation-of-an-exponentially-weighted-mean
+        self.variance_accum = (1.0 - self.alpha)
+            * (self.variance_accum + self.alpha * (point - self.mean_accum).powi(2));
+        self.mean_accum = self.mean_accum * (1.0 - self.alpha) + self.alpha * point;
+    }
+
+    /// Gets a very rough approximation (normal approximation) of the given percentile
+    pub fn inverse_cdf(&self, frac: f64) -> f64 {
+        let dist =
+            probability::distribution::Gaussian::new(self.mean_accum, self.variance_accum.sqrt());
+        dist.inverse(frac)
+    }
+
+    /// Gets the current mean
+    pub fn mean(&self) -> f64 {
+        self.mean_accum
+    }
+}
 
 /// A generic statistics gatherer, logically a string-keyed map of f64-valued time series. It has a fairly cheap Clone implementation, allowing easy "snapshots" of the stats at a given point in time. The Default implementation creates a no-op that does nothing.
 #[derive(Debug, Clone, Default)]

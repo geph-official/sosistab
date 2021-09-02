@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-const QUANTUM: u32 = 4;
+const QUANTUM: u32 = 16;
 
 /// A high-precision pacer that uses async-io's timers under the hood.
 pub struct Pacer {

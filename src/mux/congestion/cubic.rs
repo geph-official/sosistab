@@ -15,7 +15,7 @@ impl Cubic {
     /// Creates a new Cubic instance
     pub fn new(beta: f64, cee: f64) -> Self {
         Self {
-            cwnd: 1.0,
+            cwnd: 16.0,
             beta,
             cee,
             last_loss: None,
@@ -26,7 +26,7 @@ impl Cubic {
     fn recalculate_cwnd(&mut self) {
         if let Some(last_loss) = self.last_loss {
             let kay = (self.cwnd_max * (1.0 - self.beta) / self.cee).powf(0.3333);
-            self.cwnd = (self.cee * (last_loss.elapsed().as_secs_f64() * 2.0 - kay).powi(3)
+            self.cwnd = (self.cee * (last_loss.elapsed().as_secs_f64() * 3.0 - kay).powi(3)
                 + self.cwnd_max)
                 .max(4.0);
         }

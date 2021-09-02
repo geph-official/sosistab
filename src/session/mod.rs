@@ -188,11 +188,11 @@ async fn session_send_loop(ctx: SessionSendCtx) {
     }
 }
 
-const BURST_SIZE: usize = 64;
+const BURST_SIZE: usize = 16;
 
 #[tracing::instrument(skip(ctx))]
 async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<()> {
-    let mut pacer = Pacer::new(Duration::from_millis(1) / 20);
+    let mut pacer = Pacer::new(Duration::from_millis(1) / 30);
     enum Event {
         NewPayload(Buff),
         FecTimeout,
@@ -252,10 +252,10 @@ async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<
                     continue;
                 }
                 let measured_loss = ctx.statg.loss_u8();
-                if measured_loss == 0 {
-                    unfecked.clear();
-                    continue;
-                }
+                // if measured_loss == 0 {
+                //     unfecked.clear();
+                //     continue;
+                // }
 
                 assert!(unfecked.len() <= BURST_SIZE);
                 // encode

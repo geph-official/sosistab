@@ -57,13 +57,13 @@ impl Inflight {
         self.lost_count
     }
 
-    pub fn srtt(&self) -> Duration {
-        self.rtt.srtt()
-    }
+    // pub fn srtt(&self) -> Duration {
+    //     self.rtt.srtt()
+    // }
 
-    pub fn rtt_var(&self) -> Duration {
-        self.rtt.rtt_var()
-    }
+    // pub fn rtt_var(&self) -> Duration {
+    //     self.rtt.rtt_var()
+    // }
 
     pub fn min_rtt(&self) -> Duration {
         self.rtt.min_rtt()
@@ -118,31 +118,31 @@ impl Inflight {
             if acked_seg.known_lost {
                 self.lost_count -= 1;
             }
-            // mark as lost everything below
-            let mark_as_lost: Vec<u64> = self
-                .segments
-                .keys()
-                .take_while(|f| **f < acked_seqno)
-                .copied()
-                .collect();
-            let now = Instant::now();
-            for seqno in mark_as_lost {
-                let seg = self.segments.get_mut(&seqno).unwrap();
-                // if send time was in the past far enough, retransmit
-                if seg.retrans == 0
-                    && seg.retrans_time + self.max_inversion * 2 <= acked_seg.retrans_time
-                    && seg.retrans_time > now
-                {
-                    tracing::debug!(
-                        "EARLY retransmit for lost segment {} due to ack of {}",
-                        seqno,
-                        acked_seqno
-                    );
-                    let old_retrans_time = std::mem::replace(&mut seg.retrans_time, now);
-                    self.remove_rto(old_retrans_time, seqno);
-                    self.rtos.entry(now).or_default().push(seqno);
-                }
-            }
+            // // mark as lost everything below
+            // let mark_as_lost: Vec<u64> = self
+            //     .segments
+            //     .keys()
+            //     .take_while(|f| **f < acked_seqno)
+            //     .copied()
+            //     .collect();
+            // let now = Instant::now();
+            // for seqno in mark_as_lost {
+            //     let seg = self.segments.get_mut(&seqno).unwrap();
+            //     // if send time was in the past far enough, retransmit
+            //     if seg.retrans == 0
+            //         && seg.retrans_time + self.max_inversion * 2 <= acked_seg.retrans_time
+            //         && seg.retrans_time > now
+            //     {
+            //         tracing::debug!(
+            //             "EARLY retransmit for lost segment {} due to ack of {}",
+            //             seqno,
+            //             acked_seqno
+            //         );
+            //         let old_retrans_time = std::mem::replace(&mut seg.retrans_time, now);
+            //         self.remove_rto(old_retrans_time, seqno);
+            //         self.rtos.entry(now).or_default().push(seqno);
+            //     }
+            // }
             true
         } else {
             false

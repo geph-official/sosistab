@@ -85,5 +85,6 @@ impl FrameEncoder {
             }))
         .min(255 - run_len)
         .min(run_len * 4)
+        .max(1)
     }
 }

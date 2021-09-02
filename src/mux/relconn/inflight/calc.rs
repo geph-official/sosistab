@@ -1,69 +1,41 @@
 use std::time::{Duration, Instant};
 
+use crate::EmaCalculator;
+
 const MAX_MEASUREMENTS: usize = 32;
 
 pub struct RttCalculator {
-    // sorted vector
-    rtt_measurements: Vec<u64>,
-
-    // rate estimation
-    min_rtt: u64,
-    rtt_update_time: Instant,
+    inner: EmaCalculator,
 }
 
 impl Default for RttCalculator {
     fn default() -> Self {
         RttCalculator {
-            rtt_measurements: vec![300],
-            min_rtt: 300,
-            rtt_update_time: Instant::now(),
+            inner: EmaCalculator::new(0.5, 0.01),
         }
     }
 }
 
 impl RttCalculator {
     pub fn record_sample(&mut self, sample: Duration) {
-        let sample = (sample.as_millis() as u64).max(1);
-        self.rtt_measurements.push(sample);
-        self.rtt_measurements.sort_unstable();
-        // if over limit, decimate
-        if self.rtt_measurements.len() > MAX_MEASUREMENTS {
-            for i in 0..self.rtt_measurements.len() / 2 {
-                self.rtt_measurements[i] =
-                    (self.rtt_measurements[i * 2] + self.rtt_measurements[i * 2 + 1]) / 2
-            }
-            self.rtt_measurements
-                .truncate(self.rtt_measurements.len() / 2)
-        }
-
-        // delivery rate
-        let now = Instant::now();
-        if sample < self.min_rtt
-            || now
-                .saturating_duration_since(self.rtt_update_time)
-                .as_millis()
-                > 10000
-        {
-            self.min_rtt = sample;
-            self.rtt_update_time = now;
-        }
+        self.inner.update(sample.as_secs_f64())
     }
 
     pub fn rto(&self) -> Duration {
-        Duration::from_millis(*self.rtt_measurements.last().unwrap() + 250)
+        Duration::from_secs_f64(self.inner.inverse_cdf(0.9999) + 0.05)
     }
 
-    pub fn srtt(&self) -> Duration {
-        Duration::from_millis(self.rtt_measurements[self.rtt_measurements.len() / 2])
-    }
+    // pub fn srtt(&self) -> Duration {
+    //     Duration::from_secs_f64(self.inner.mean())
+    // }
 
-    pub fn rtt_var(&self) -> Duration {
-        Duration::from_millis(
-            *self.rtt_measurements.last().unwrap() - *self.rtt_measurements.first().unwrap(),
-        )
-    }
+    // pub fn rtt_var(&self) -> Duration {
+    //     Duration::from_millis(
+    //         *self.rtt_measurements.last().unwrap() - *self.rtt_measurements.first().unwrap(),
+    //     )
+    // }
 
     pub fn min_rtt(&self) -> Duration {
-        Duration::from_millis(self.min_rtt)
+        Duration::from_secs_f64(self.inner.inverse_cdf(0.1).max(0.0))
     }
 }

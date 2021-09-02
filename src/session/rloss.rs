@@ -5,6 +5,8 @@ use std::{
 
 use ordered_float::OrderedFloat;
 
+use crate::EmaCalculator;
+
 /// Receive-side loss calculator.
 ///
 /// The basic algorithm is to note "gaps" in packets, then nothing them as lost when those gaps are unfilled for a while.
@@ -14,7 +16,7 @@ pub struct RecvLossCalc {
     gap_seqnos: BTreeMap<u64, Instant>,
     lost_count: f64,
     good_count: f64,
-    loss_samples: VecDeque<OrderedFloat<f64>>,
+    loss_samples: EmaCalculator,
 
     // "half-life" of the loss calculation
     window: f64,
@@ -30,7 +32,7 @@ impl RecvLossCalc {
             gap_seqnos: BTreeMap::new(),
             lost_count: 0.0,
             good_count: 1.0,
-            loss_samples: Default::default(),
+            loss_samples: EmaCalculator::new(0.0, 0.1),
 
             window,
             last_loss_update: Instant::now(),
@@ -82,24 +84,20 @@ impl RecvLossCalc {
             > self.window
             && self.good_count > 10.0
         {
-            tracing::debug!("recording loss {}", loss);
-            self.loss_samples.push_back(loss.into());
+            tracing::debug!(
+                "recording loss {}, ema {}",
+                loss,
+                self.loss_samples.inverse_cdf(0.1)
+            );
+            self.loss_samples.update(loss);
             self.last_loss_update = now;
             self.lost_count = 0.0;
             self.good_count = 0.0;
-        }
-        if self.loss_samples.len() > 10 {
-            self.loss_samples.pop_front();
         }
     }
 
     /// Calculate loss
     pub fn calculate_loss(&mut self) -> f64 {
-        let mut buf = self.loss_samples.clone();
-        buf.make_contiguous().sort_unstable();
-        buf.get(buf.len() / 2)
-            .copied()
-            .map(|v| v.into_inner())
-            .unwrap_or(0.0)
+        self.loss_samples.inverse_cdf(0.1).max(0.0)
     }
 }

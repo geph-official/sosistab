@@ -1,7 +1,6 @@
 use crate::{buffer::Buff, crypt};
-use crate::{protocol, runtime, Backhaul, Session, SessionBack, SessionConfig, StatsGatherer};
-use anyhow::Context;
-use rand::prelude::*;
+use crate::{protocol, runtime, Backhaul, Session, SessionConfig, StatsGatherer};
+
 use smol::{prelude::*, Task};
 use std::{
     collections::VecDeque,
