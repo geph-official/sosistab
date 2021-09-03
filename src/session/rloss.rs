@@ -1,9 +1,7 @@
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::BTreeMap,
     time::{Duration, Instant},
 };
-
-use ordered_float::OrderedFloat;
 
 use crate::EmaCalculator;
 
@@ -32,7 +30,7 @@ impl RecvLossCalc {
             gap_seqnos: BTreeMap::new(),
             lost_count: 0.0,
             good_count: 1.0,
-            loss_samples: EmaCalculator::new(0.0, 0.1),
+            loss_samples: EmaCalculator::new_unset(0.1),
 
             window,
             last_loss_update: Instant::now(),

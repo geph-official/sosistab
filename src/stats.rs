@@ -8,6 +8,7 @@ use probability::distribution::Inverse;
 pub struct EmaCalculator {
     mean_accum: f64,
     variance_accum: f64,
+    set: bool,
     alpha: f64,
 }
 
@@ -18,11 +19,27 @@ impl EmaCalculator {
             mean_accum: initial_mean,
             variance_accum: 0.0,
             alpha,
+            set: true,
+        }
+    }
+
+    /// Creates a new calculator with nothing set.
+    pub fn new_unset(alpha: f64) -> Self {
+        Self {
+            mean_accum: 0.0,
+            variance_accum: 0.0,
+            alpha,
+            set: false,
         }
     }
 
     /// Updates the calculator with a given data point
     pub fn update(&mut self, point: f64) {
+        if !self.set {
+            self.mean_accum = point;
+            self.variance_accum = 0.0;
+            self.set = true
+        }
         // https://stats.stackexchange.com/questions/111851/standard-deviation-of-an-exponentially-weighted-mean
         self.variance_accum = (1.0 - self.alpha)
             * (self.variance_accum + self.alpha * (point - self.mean_accum).powi(2));
