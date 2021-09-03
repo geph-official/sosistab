@@ -257,7 +257,7 @@ impl ConnVars {
         recv_write: &mut BipeReader,
         recv_wire_read: &Receiver<Message>,
     ) -> anyhow::Result<ConnVarEvt> {
-        // smol::future::yield_now().await;
+        smol::future::yield_now().await;
         // There's a rather subtle logic involved here.
         //
         // We want to make sure the *total inflight* is less than cwnd.

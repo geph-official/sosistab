@@ -40,6 +40,7 @@ concurrent-queue= "1.2.2"
 rand_chacha="0.2"
 rtrb="0.1"
 smolscale= "0.3.0"
+# smolscale={path="../smolscale"}
 futures-intrusive="0.4"
 async-trait= "0.1.42"
 dashmap= "4.0.1"

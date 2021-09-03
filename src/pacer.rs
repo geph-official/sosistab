@@ -29,6 +29,8 @@ impl Pacer {
             (&mut self.timer).await;
             self.next_pace_time = Instant::now().max(self.next_pace_time + self.interval * QUANTUM);
             self.timer.set_at(self.next_pace_time);
+        } else {
+            smol::future::yield_now().await;
         }
     }
 
