@@ -252,10 +252,10 @@ async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<
                     continue;
                 }
                 let measured_loss = ctx.statg.loss_u8();
-                // if measured_loss == 0 {
-                //     unfecked.clear();
-                //     continue;
-                // }
+                if measured_loss == 0 {
+                    unfecked.clear();
+                    continue;
+                }
 
                 assert!(unfecked.len() <= BURST_SIZE);
                 // encode

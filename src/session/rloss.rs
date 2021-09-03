@@ -3,15 +3,17 @@ use std::{
     time::{Duration, Instant},
 };
 
+use rustc_hash::FxHashMap;
+
 use crate::EmaCalculator;
 
 /// Receive-side loss calculator.
 ///
-/// The basic algorithm is to note "gaps" in packets, then nothing them as lost when those gaps are unfilled for a while.
+/// The basic algorithm is to note "gaps" in packets, then noting them as lost when those gaps are unfilled for a while.
 pub struct RecvLossCalc {
     last_seen_seqno: u64,
-    good_seqnos: BTreeMap<u64, Instant>,
-    gap_seqnos: BTreeMap<u64, Instant>,
+    good_seqnos: FxHashMap<u64, Instant>,
+    gap_seqnos: FxHashMap<u64, Instant>,
     lost_count: f64,
     good_count: f64,
     loss_samples: EmaCalculator,
@@ -26,8 +28,8 @@ impl RecvLossCalc {
     pub fn new(window: f64) -> Self {
         Self {
             last_seen_seqno: 0,
-            good_seqnos: BTreeMap::new(),
-            gap_seqnos: BTreeMap::new(),
+            good_seqnos: FxHashMap::default(),
+            gap_seqnos: FxHashMap::default(),
             lost_count: 0.0,
             good_count: 1.0,
             loss_samples: EmaCalculator::new_unset(0.1),

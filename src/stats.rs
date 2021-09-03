@@ -48,9 +48,16 @@ impl EmaCalculator {
 
     /// Gets a very rough approximation (normal approximation) of the given percentile
     pub fn inverse_cdf(&self, frac: f64) -> f64 {
-        let dist =
-            probability::distribution::Gaussian::new(self.mean_accum, self.variance_accum.sqrt());
-        dist.inverse(frac)
+        let stddev = self.variance_accum.sqrt();
+        if stddev > 0.0 {
+            let dist = probability::distribution::Gaussian::new(
+                self.mean_accum,
+                self.variance_accum.sqrt(),
+            );
+            dist.inverse(frac)
+        } else {
+            self.mean_accum
+        }
     }
 
     /// Gets the current mean
