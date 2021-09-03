@@ -192,7 +192,7 @@ const BURST_SIZE: usize = 16;
 
 #[tracing::instrument(skip(ctx))]
 async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<()> {
-    let mut pacer = Pacer::new(Duration::from_millis(1) / 30);
+    // let mut pacer = Pacer::new(Duration::from_millis(1) / 30);
     enum Event {
         NewPayload(Buff),
         FecTimeout,
@@ -242,7 +242,7 @@ async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<
                 frame_no += 1;
                 // reset fec timer
                 fec_timer.set_after(Duration::from_millis(FEC_TIMEOUT_MS));
-                pacer.wait_next().await;
+                // pacer.wait_next().await;
             }
             // we have something to send, as a FEC packet.
             Event::FecTimeout => {
@@ -284,7 +284,7 @@ async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<
                     let send_encrypted = ctx.send_crypt.encrypt(&send_padded);
                     ctx.send_outgoing.send(send_encrypted).await.ok()?;
                     // // Pace the FEC packets!
-                    pacer.wait_next().await;
+                    // pacer.wait_next().await;
                     // pacer.set_interval(Duration::from_secs_f64(0.5 / ctx.statg.max_pps()));
                 }
             }

@@ -319,8 +319,8 @@ impl ConnVars {
                 }
             }
             let pacing_interval = Duration::from_secs_f64(1.0 / self.pacing_rate());
-            // self.pacer.set_interval(pacing_interval);
-            // self.pacer.wait_next().await;
+            self.pacer.set_interval(pacing_interval);
+            self.pacer.wait_next().await;
             // if self.next_free_seqno % PACE_BATCH as u64 == 0 {
             //     smol::Timer::at(self.next_pace_time).await;
             //     let pacing_interval = Duration::from_secs_f64(1.0 / self.pacing_rate());
