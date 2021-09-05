@@ -3,6 +3,7 @@ use smol::channel::{Receiver, Sender};
 use std::sync::Arc;
 mod congestion;
 mod multiplex_actor;
+pub mod pkt_trace;
 mod relconn;
 mod structs;
 // pub use congestion::*;

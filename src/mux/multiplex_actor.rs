@@ -6,6 +6,7 @@ use std::{ops::DerefMut, sync::Arc, time::Duration};
 
 use crate::{
     buffer::{Buff, BuffMut},
+    mux::pkt_trace::PktTraceCtx,
     runtime, safe_deserialize, RelConn, Session,
 };
 
@@ -21,6 +22,7 @@ pub async fn multiplex(
     conn_open_recv: Receiver<(Option<String>, Sender<RelConn>)>,
     conn_accept_send: Sender<RelConn>,
 ) -> anyhow::Result<()> {
+    let trace_ctx = PktTraceCtx::new_random();
     let conn_tab = Arc::new(ConnTable::default());
     let (glob_send, glob_recv) = smol::channel::bounded(1000);
     let (dead_send, dead_recv) = smol::channel::unbounded();
@@ -143,12 +145,14 @@ pub async fn multiplex(
                 .detach();
             }
             Event::SendMsg(msg) => {
+                trace_ctx.trace_pkt(&msg, true);
                 let mut to_send = BuffMut::new();
                 let r: &mut Vec<u8> = &mut to_send;
                 bincode::serialize_into(r, &msg).unwrap();
                 session.send_bytes(to_send.freeze()).await?;
             }
             Event::RecvMsg(msg) => {
+                trace_ctx.trace_pkt(&msg, false);
                 match msg {
                     // unreliable
                     Message::Urel(bts) => {

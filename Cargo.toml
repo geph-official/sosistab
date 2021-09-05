@@ -63,6 +63,7 @@ fastrand="1"
 bipe="0.1.1"
 serde_bytes = "0.11.5"
 probability = "0.17.0"
+serde_json = "1.0.67"
 
 [profile.release]
 panic = "abort"

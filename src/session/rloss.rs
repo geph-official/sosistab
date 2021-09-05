@@ -7,7 +7,7 @@ use ordered_float::OrderedFloat;
 
 /// Receive-side loss calculator.
 ///
-/// The basic algorithm is to note "gaps" in packets, then nothing them as lost when those gaps are unfilled for a while.
+/// The basic algorithm is to note "gaps" in packets, then marking them as lost when those gaps are unfilled for a while.
 pub struct RecvLossCalc {
     last_seen_seqno: u64,
     good_seqnos: BTreeMap<u64, Instant>,

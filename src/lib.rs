@@ -45,6 +45,8 @@ mod recfilter;
 mod stats;
 pub use stats::*;
 
+pub use mux::pkt_trace::init_packet_tracing;
+
 pub(crate) type SVec<T> = SmallVec<[T; 16]>;
 
 /// Safely deserialize

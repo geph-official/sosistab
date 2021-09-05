@@ -35,18 +35,16 @@ impl RttCalculator {
     }
 
     pub fn rto(&self) -> Duration {
-        Duration::from_secs_f64(self.inner.inverse_cdf(0.9999) + 0.05)
+        Duration::from_secs_f64(self.inner.inverse_cdf(0.99) + 0.35)
     }
 
     // pub fn srtt(&self) -> Duration {
     //     Duration::from_secs_f64(self.inner.mean())
     // }
 
-    // pub fn rtt_var(&self) -> Duration {
-    //     Duration::from_millis(
-    //         *self.rtt_measurements.last().unwrap() - *self.rtt_measurements.first().unwrap(),
-    //     )
-    // }
+    pub fn rtt_var(&self) -> Duration {
+        Duration::from_secs_f64(self.inner.inverse_cdf(0.99) - self.inner.inverse_cdf(0.01))
+    }
 
     pub fn min_rtt(&self) -> Duration {
         Duration::from_secs_f64(self.inner.inverse_cdf(0.1).max(0.0))

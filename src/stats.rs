@@ -17,7 +17,7 @@ impl EmaCalculator {
     pub fn new(initial_mean: f64, alpha: f64) -> Self {
         Self {
             mean_accum: initial_mean,
-            variance_accum: initial_mean / 10.0,
+            variance_accum: initial_mean.powi(2),
             alpha,
             set: true,
         }

@@ -69,6 +69,17 @@ struct ServerArgs {
 struct SelfTestArgs {}
 
 fn main() -> anyhow::Result<()> {
+    let (send_trace, recv_trace) = smol::channel::unbounded();
+    let _trace_saver = smolscale::spawn(async move {
+        let mut file = smol::fs::File::create("pkt_trace.log").await.unwrap();
+        loop {
+            let line: String = recv_trace.recv().await.unwrap();
+            file.write_all(format!("{}\n", line).as_bytes())
+                .await
+                .unwrap();
+        }
+    });
+    sosistab::init_packet_tracing(move |line| send_trace.try_send(line).unwrap());
     env_logger::init();
     let args: Args = argh::from_env();
     match args.nested {
