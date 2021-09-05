@@ -133,7 +133,7 @@ impl Inflight {
             // }
             if acked_seg.known_lost {
                 self.lost_count -= 1;
-                eprintln!("acking known lost {}", acked_seqno);
+                // eprintln!("acking known lost {}", acked_seqno);
             }
             // mark as lost everything below
             let mark_as_lost: Vec<u64> = self
@@ -175,7 +175,7 @@ impl Inflight {
             if !was_lost {
                 self.lost_count += 1;
             } else {
-                eprintln!("WAS ALREADY LOST");
+                // eprintln!("WAS ALREADY LOST");
             }
             true
         } else {
@@ -226,7 +226,7 @@ impl Inflight {
                 (entry.payload.clone(), old_retrans, entry.retrans_time)
             })?
         };
-        eprintln!("retransmit {}", seqno);
+        // eprintln!("retransmit {}", seqno);
         self.remove_rto(old_retrans, seqno);
         self.rtos.entry(new_retrans).or_default().push(seqno);
         self.lost_count -= 1;
