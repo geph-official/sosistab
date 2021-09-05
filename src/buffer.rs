@@ -41,7 +41,7 @@ impl Drop for BuffMut {
     fn drop(&mut self) {
         // dbg!(BUFF_POOL.len());
         let _ = BUFF_POOL.with(|bp| {
-            let bp = bp.borrow_mut();
+            let mut bp = bp.borrow_mut();
             if bp.len() < 10000 {
                 bp.push(std::mem::take(&mut self.inner))
             }
