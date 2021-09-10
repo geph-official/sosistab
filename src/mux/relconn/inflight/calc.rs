@@ -85,7 +85,7 @@ impl BwCalculator {
             .delivery_max_filter
             .peek_front()
             .copied()
-            .map(|f| f.0 .1.elapsed().as_secs_f64() > 1.0)
+            .map(|f| f.0 .1.elapsed().as_secs_f64() > 2.0)
             .unwrap_or_default()
         {
             self.delivery_max_filter.pop_front();

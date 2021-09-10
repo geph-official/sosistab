@@ -89,8 +89,8 @@ impl Inflight {
     }
 
     /// The total bdp of the link, in packets
-    pub fn bdp(&self) -> f64 {
-        self.bw.delivery_rate() * self.rtt.min_rtt().as_secs_f64()
+    pub fn bdp(&self) -> usize {
+        (self.bw.delivery_rate() * self.rtt.min_rtt().as_secs_f64()) as usize
     }
 
     pub fn rto(&self) -> Duration {

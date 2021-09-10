@@ -60,9 +60,9 @@ impl Default for ConnVars {
             // next_pace_time: Instant::now(),
             lost_seqnos: BTreeSet::new(),
             last_loss: None,
-            cc: Box::new(Cubic::new(0.7, 0.4)),
+            // cc: Box::new(Cubic::new(0.7, 0.4)),
             pacer: Pacer::new(Duration::from_millis(1)),
-            // cc: Box::new(Highspeed::new(2)),
+            cc: Box::new(Highspeed::new(2)),
             // cc: Box::new(Trivial::new(00)),
         }
     }
@@ -129,19 +129,16 @@ impl ConnVars {
                     self.inflight.last_minus_first()
                 );
                 let now = Instant::now();
-                if self.cc.cwnd() > self.inflight.bdp() as usize {
-                    if let Some(old) = self.last_loss {
-                        if now.saturating_duration_since(old) > self.inflight.min_rtt() {
-                            self.cc.mark_loss();
-                            self.last_loss = Some(now);
-                        }
-                    } else {
+                if let Some(old) = self.last_loss {
+                    if now.saturating_duration_since(old) > self.inflight.min_rtt() {
                         self.cc.mark_loss();
                         self.last_loss = Some(now);
                     }
                 } else {
-                    tracing::debug!("SQUELCHING THAT LOSS");
+                    self.cc.mark_loss();
+                    self.last_loss = Some(now);
                 }
+
                 // assert_eq!(self.inflight.lost_count(), self.lost_seqnos.len());
                 self.inflight.mark_lost(seqno);
                 self.lost_seqnos.insert(seqno);
@@ -161,14 +158,14 @@ impl ConnVars {
                 let seqnos = safe_deserialize::<Vec<Seqno>>(&payload)?;
                 // tracing::trace!("new ACK pkt with {} seqnos", seqnos.len());
                 for _ in 0..self.inflight.mark_acked_lt(seqno) {
-                    self.cc.mark_ack()
+                    self.cc.mark_ack(self.inflight.bdp())
                 }
                 self.lost_seqnos.retain(|v| *v >= seqno);
                 assert_eq!(self.inflight.lost_count(), self.lost_seqnos.len());
                 for seqno in seqnos {
                     self.lost_seqnos.remove(&seqno);
                     if self.inflight.mark_acked(seqno) {
-                        self.cc.mark_ack();
+                        self.cc.mark_ack(self.inflight.bdp());
                     }
                 }
                 self.check_closed()?;
@@ -288,13 +285,13 @@ impl ConnVars {
         // We don't want retransmissions to cause more than CWND packets in flight, any more do we let normal transmissions do so.
         // Thus, we must have a state where a packet is known to be lost, but is not yet retransmitted.
         let first_retrans = self.lost_seqnos.iter().next().cloned();
-        let can_retransmit =
-            self.inflight.inflight() <= self.cc.cwnd() && self.inflight.last_minus_first() <= 10000;
+        let can_retransmit = self.inflight.inflight() <= self.cc.cwnd();
         // If we've already closed the connection, we cannot write *new* packets
         let can_write_new = can_retransmit
             && self.inflight.unacked() <= self.cc.cwnd()
             && !self.closing
-            && self.lost_seqnos.is_empty();
+            && self.lost_seqnos.is_empty()
+            && self.inflight.last_minus_first() <= 10000;
         let force_ack = self.ack_seqnos.len() >= ACK_BATCH;
         assert!(self.ack_seqnos.len() <= ACK_BATCH);
 
