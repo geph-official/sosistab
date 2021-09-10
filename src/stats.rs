@@ -3,6 +3,88 @@ use std::time::SystemTime;
 use dashmap::DashMap;
 use probability::distribution::Inverse;
 
+/// Min-queue
+#[derive(Debug, Clone, Default)]
+pub struct MinQueue<T: Ord> {
+    left: Vec<(usize, usize)>,
+    right: Vec<(usize, usize)>,
+    items: slab::Slab<T>,
+}
+
+impl<T: Ord> MinQueue<T> {
+    /// Creates something empty.
+    pub fn new() -> Self {
+        Self {
+            left: Vec::new(),
+            right: Vec::new(),
+            items: slab::Slab::new(),
+        }
+    }
+    /// Pushes something to the back of the queue.
+    pub fn push_back(&mut self, elem: T) {
+        let elem = self.items.insert(elem);
+        self.left.push((
+            elem,
+            self.left
+                .last()
+                .copied()
+                .map(|i| self.min_idx_of(i.1, elem))
+                .unwrap_or(elem),
+        ));
+    }
+
+    /// Pops from the beginning of the queue.
+    pub fn pop_front(&mut self) -> Option<T> {
+        if self.right.is_empty() {
+            while let Some((elem, _)) = self.left.pop() {
+                self.right.push((
+                    elem,
+                    self.right
+                        .last()
+                        .copied()
+                        .map(|i| self.min_idx_of(i.1, elem))
+                        .unwrap_or(elem),
+                ));
+            }
+        }
+        Some(self.items.remove(self.right.pop()?.0))
+    }
+
+    /// Peeks the beginning of the queue.
+    pub fn peek_front(&mut self) -> Option<&T> {
+        self.items.get(if self.right.is_empty() {
+            self.left.first().copied()?.0
+        } else {
+            self.right.last().copied()?.0
+        })
+    }
+
+    /// Get current minimum.
+    pub fn min(&self) -> Option<&T> {
+        self.items.get(self.min_idx()?)
+    }
+
+    /// Get current minimum index.
+    fn min_idx(&self) -> Option<usize> {
+        Some(if self.right.is_empty() {
+            self.left.last().copied()?.1
+        } else if self.left.is_empty() {
+            self.right.last().copied()?.1
+        } else {
+            self.min_idx_of(self.left.last().copied()?.1, self.right.last().copied()?.1)
+        })
+    }
+
+    /// Get smaller of two
+    fn min_idx_of(&self, x: usize, y: usize) -> usize {
+        if self.items[x] < self.items[y] {
+            x
+        } else {
+            y
+        }
+    }
+}
+
 /// Exponential moving average and standard deviation calculator
 #[derive(Debug, Clone)]
 pub struct EmaCalculator {

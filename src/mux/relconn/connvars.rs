@@ -60,9 +60,9 @@ impl Default for ConnVars {
             // next_pace_time: Instant::now(),
             lost_seqnos: BTreeSet::new(),
             last_loss: None,
-            // cc: Box::new(Cubic::new(0.7, 0.4)),
+            cc: Box::new(Cubic::new(0.7, 0.4)),
             pacer: Pacer::new(Duration::from_millis(1)),
-            cc: Box::new(Highspeed::new(2)),
+            // cc: Box::new(Highspeed::new(2)),
             // cc: Box::new(Trivial::new(00)),
         }
     }
@@ -95,13 +95,13 @@ impl ConnVars {
             Ok(ConnVarEvt::Retransmit(seqno)) => {
                 if let Some(msg) = self.inflight.retransmit(seqno) {
                     self.lost_seqnos.remove(&seqno);
-                    tracing::debug!(
-                        "** RETRANSMIT {} (inflight = {}, cwnd = {}, lost_count = {}) **",
-                        seqno,
-                        self.inflight.inflight(),
-                        self.cc.cwnd(),
-                        self.inflight.lost_count(),
-                    );
+                    // tracing::debug!(
+                    //     "** RETRANSMIT {} (inflight = {}, cwnd = {}, lost_count = {}) **",
+                    //     seqno,
+                    //     self.inflight.inflight(),
+                    //     self.cc.cwnd(),
+                    //     self.inflight.lost_count(),
+                    // );
                     transmit(msg);
                 }
                 assert_eq!(self.inflight.lost_count(), self.lost_seqnos.len());
@@ -119,23 +119,28 @@ impl ConnVars {
                     self.inflight.min_rtt()
                 );
                 tracing::debug!(
-                    "** MARKING LOST {} (unacked = {}, inflight = {}, cwnd = {}, lost_count = {}, lmf = {}) **",
+                    "** MARKING LOST {} (unacked = {}, inflight = {}, cwnd = {}, BDP = {}, lost_count = {}, lmf = {}) **",
                     seqno,
                     self.inflight.unacked(),
                     self.inflight.inflight(),
                     self.cc.cwnd(),
+                    self.inflight.bdp() as usize ,
                     self.inflight.lost_count(),
                     self.inflight.last_minus_first()
                 );
                 let now = Instant::now();
-                if let Some(old) = self.last_loss {
-                    if now.saturating_duration_since(old) > self.inflight.min_rtt() {
+                if self.cc.cwnd() > self.inflight.bdp() as usize {
+                    if let Some(old) = self.last_loss {
+                        if now.saturating_duration_since(old) > self.inflight.min_rtt() {
+                            self.cc.mark_loss();
+                            self.last_loss = Some(now);
+                        }
+                    } else {
                         self.cc.mark_loss();
                         self.last_loss = Some(now);
                     }
                 } else {
-                    self.cc.mark_loss();
-                    self.last_loss = Some(now);
+                    tracing::debug!("SQUELCHING THAT LOSS");
                 }
                 // assert_eq!(self.inflight.lost_count(), self.lost_seqnos.len());
                 self.inflight.mark_lost(seqno);

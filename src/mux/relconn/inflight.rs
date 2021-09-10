@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use self::calc::RttCalculator;
+use self::calc::{BwCalculator, RttCalculator};
 
 mod calc;
 
@@ -17,6 +17,8 @@ pub struct InflightEntry {
     pub payload: Message,
 
     retrans_time: Instant,
+    delivered: u64,
+    delivered_time: Instant,
 
     known_lost: bool,
 }
@@ -27,6 +29,7 @@ pub struct Inflight {
     rtos: BTreeMap<Instant, Vec<Seqno>>,
     lost_count: usize,
     rtt: RttCalculator,
+    bw: BwCalculator,
     // max_inversion: Duration,
     // max_acked_sendtime: Instant,
 }
@@ -38,6 +41,7 @@ impl Inflight {
             segments: Default::default(),
             rtos: Default::default(),
             rtt: Default::default(),
+            bw: Default::default(),
             lost_count: 0,
             // max_inversion: Duration::from_millis(1),
             // max_acked_sendtime: Instant::now(),
@@ -84,6 +88,11 @@ impl Inflight {
         self.rtt.min_rtt()
     }
 
+    /// The total bdp of the link, in packets
+    pub fn bdp(&self) -> f64 {
+        self.bw.delivery_rate() * self.rtt.min_rtt().as_secs_f64()
+    }
+
     pub fn rto(&self) -> Duration {
         self.rtt.rto()
     }
@@ -111,29 +120,17 @@ impl Inflight {
         let now = Instant::now();
 
         if let Some(acked_seg) = self.segments.remove(&acked_seqno) {
+            // record RTT
             if acked_seg.retrans == 0 {
-                // self.max_acked_sendtime = acked_seg.send_time.max(self.max_acked_sendtime);
                 self.rtt
                     .record_sample(now.saturating_duration_since(acked_seg.send_time));
-                // self.max_inversion = self
-                //     .max_acked_sendtime
-                //     .saturating_duration_since(acked_seg.send_time)
-                //     .max(self.max_inversion);
             }
+            // record bandwidth
+            self.bw.on_ack(acked_seg.delivered, acked_seg.send_time);
             // remove from rtos
             self.remove_rto(acked_seg.retrans_time, acked_seqno);
-            // let rto_entry = self.rtos.entry(acked_seg.retrans_time);
-            // if let Entry::Occupied(mut o) = rto_entry {
-            //     o.get_mut().retain(|v| *v != acked_seqno);
-            //     if o.get().is_empty() {
-            //         o.remove();
-            //     }
-            // } else {
-            //     panic!("shouldn't happen")
-            // }
             if acked_seg.known_lost {
                 self.lost_count -= 1;
-                // eprintln!("acking known lost {}", acked_seqno);
             }
             // mark as lost everything below
             let mark_as_lost: Vec<u64> = self
@@ -197,6 +194,8 @@ impl Inflight {
                 retrans: 0,
                 retrans_time: rto,
                 known_lost: false,
+                delivered: self.bw.delivered(),
+                delivered_time: self.bw.delivered_time(),
             },
         );
         assert!(prev.is_none());
