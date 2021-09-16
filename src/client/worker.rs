@@ -95,7 +95,7 @@ async fn client_backhaul_once(
         Outgoing(Buff),
     }
     // last remind time
-    let mut last_remind: Option<Instant> = None;
+    let mut last_incoming_time: Option<Instant> = None;
 
     loop {
         let down = {
@@ -122,17 +122,17 @@ async fn client_backhaul_once(
                 } else {
                     tracing::warn!("stray packet from {}", src)
                 }
+                last_incoming_time = Some(Instant::now());
             }
             Ok(Evt::Outgoing(bts)) => {
                 let bts: Buff = bts;
                 let now = Instant::now();
-                if last_remind
+                if last_incoming_time
                     .map(|f| now.saturating_duration_since(f) > Duration::from_secs(3))
                     .unwrap_or_default()
                     || !updated
                 {
                     updated = true;
-                    last_remind = Some(now);
                     let g_encrypt =
                         crate::crypt::LegacyAead::new(&cookie.generate_c2s().next().unwrap());
                     drop(
@@ -151,7 +151,7 @@ async fn client_backhaul_once(
                     );
                 }
                 if let Err(err) = socket.send_to(bts, cfg.server_addr).await {
-                    anyhow::bail!("error sending packet: {:?}", err)
+                    tracing::warn!("error sending packet: {:?}", err)
                 }
             }
             Err(err) => {
