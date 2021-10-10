@@ -20,6 +20,12 @@ impl<T: Ord> MinQueue<T> {
             items: slab::Slab::new(),
         }
     }
+
+    /// Gets the length.
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
+
     /// Pushes something to the back of the queue.
     pub fn push_back(&mut self, elem: T) {
         let elem = self.items.insert(elem);

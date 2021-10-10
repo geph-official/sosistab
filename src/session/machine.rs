@@ -46,11 +46,11 @@ impl RecvMachine {
     }
 
     /// Processes a single frame. If successfully decoded, return the inner data.
-    pub fn process(&mut self, packet: &[u8]) -> Result<Option<SVec<Buff>>, AeadError> {
+    pub fn process(&mut self, packet: &[u8]) -> Result<Option<SVec<(Buff, u64)>>, AeadError> {
         self.process_ng(packet)
     }
 
-    fn process_ng(&mut self, packet: &[u8]) -> Result<Option<SVec<Buff>>, AeadError> {
+    fn process_ng(&mut self, packet: &[u8]) -> Result<Option<SVec<(Buff, u64)>>, AeadError> {
         let plain_frame = self.recv_crypt.decrypt(packet)?;
         let v2frame = DataFrameV2::depad(&plain_frame);
         match v2frame {
@@ -78,7 +78,7 @@ impl RecvMachine {
                     },
                 );
                 self.oob_decoder.insert_data(frame_no, body.clone());
-                Ok(Some(smallvec::smallvec![body]))
+                Ok(Some(smallvec::smallvec![(body, frame_no)]))
             }
             Some((
                 DataFrameV2::Parity {
@@ -104,7 +104,7 @@ impl RecvMachine {
                 let mut toret = SVec::new();
                 for (i, body) in res {
                     if self.replay_filter.add(i) {
-                        toret.push(body);
+                        toret.push((body, i));
                     }
                 }
                 if !toret.is_empty() {
