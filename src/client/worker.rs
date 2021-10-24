@@ -67,12 +67,12 @@ impl ClientWorker {
 
     /// Reads the received count off of this ClientWorker
     pub fn get_received_count(&self) -> usize {
-        self.received_count.load(Ordering::Relaxed)
+        self.received_count.load(Ordering::SeqCst)
     }
 
     /// Resets the received count.
     pub fn reset_received_count(&self) {
-        self.received_count.store(0, Ordering::Relaxed)
+        self.received_count.store(0, Ordering::SeqCst)
     }
 }
 
@@ -96,6 +96,7 @@ async fn client_backhaul_once(
     }
     // last remind time
     let mut last_incoming_time: Option<Instant> = None;
+    let mut last_outgoing_time: Option<Instant> = None;
 
     loop {
         let down = {
@@ -128,11 +129,15 @@ async fn client_backhaul_once(
                 let bts: Buff = bts;
                 let now = Instant::now();
                 if last_incoming_time
-                    .map(|f| now.saturating_duration_since(f) > Duration::from_secs(3))
+                    .map(|f| now.saturating_duration_since(f) > Duration::from_secs(1))
                     .unwrap_or_default()
+                    || last_outgoing_time
+                        .map(|f| now.saturating_duration_since(f) > Duration::from_secs(1))
+                        .unwrap_or_default()
                     || !updated
                 {
                     updated = true;
+                    last_outgoing_time = Some(now);
                     let g_encrypt =
                         crate::crypt::LegacyAead::new(&cookie.generate_c2s().next().unwrap());
                     drop(

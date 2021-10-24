@@ -1,6 +1,8 @@
 use crate::{buffer::Buff, crypt};
 use crate::{protocol, runtime, Backhaul, Session, SessionConfig, StatsGatherer};
 
+use probability::distribution::{Binomial, Distribution};
+use smallvec::SmallVec;
 use smol::{prelude::*, Task};
 use std::{
     collections::VecDeque,
@@ -121,10 +123,10 @@ fn init_session(
             .collect();
         let mut fired_workers: VecDeque<ClientWorker> = VecDeque::new();
         let mut last_reset = Instant::now();
-        loop {
+        let mut just_respawned = false;
+        for ctr in (0..).cycle() {
             let to_upload = back.next_outgoing().await?;
-            let random_worker = rand::random::<usize>() % workers.len();
-            tracing::trace!("picked random worker {}", random_worker);
+            let random_worker = ctr % workers.len();
             workers[random_worker].send_upload(to_upload).await;
             if cfg
                 .reset_interval
@@ -133,36 +135,63 @@ fn init_session(
             {
                 tracing::debug!("reset timer expired!");
                 last_reset = Instant::now();
-                // find the worst worker and fire it
-                let worst_worker_id = workers
-                    .iter()
-                    .enumerate()
-                    .min_by_key(|(worker_id, worker)| {
-                        let count = worker.get_received_count();
-                        tracing::debug!("worker {} has {}", worker_id, count);
+                if just_respawned {
+                    for worker in workers.iter() {
                         worker.reset_received_count();
-                        count
-                    })
-                    .map(|x| x.0)
-                    .expect("must have a worst worker");
-                tracing::debug!("replacing worst worker {}", worst_worker_id);
-                let new_worker = ClientWorker::start(
-                    cookie.clone(),
-                    resume_token.clone(),
-                    back.clone(),
-                    worst_worker_id as u8,
-                    cfg.clone(),
-                );
-                let worst_worker = std::mem::replace(&mut workers[worst_worker_id], new_worker);
-                fired_workers.push_back(worst_worker);
-                if fired_workers.len() > workers.len() {
-                    fired_workers.pop_front();
+                    }
+                    just_respawned = false;
+                } else {
+                    // check: are we even that bad?
+                    let worker_packet_count: SmallVec<[usize; 16]> =
+                        workers.iter().map(|w| w.get_received_count()).collect();
+                    let p_value = uniform_pvalue(&worker_packet_count);
+                    tracing::debug!("p-value = {}; {:?}", p_value, worker_packet_count);
+                    if p_value < 0.01 {
+                        // find the worst worker and fire it
+                        let worst_worker_id = workers
+                            .iter()
+                            .enumerate()
+                            .min_by_key(|(worker_id, worker)| {
+                                let count = worker.get_received_count();
+                                tracing::debug!("worker {} has {}", worker_id, count);
+                                count
+                            })
+                            .map(|x| x.0)
+                            .expect("must have a worst worker");
+                        tracing::debug!("replacing worst worker {}", worst_worker_id);
+                        let new_worker = ClientWorker::start(
+                            cookie.clone(),
+                            resume_token.clone(),
+                            back.clone(),
+                            worst_worker_id as u8,
+                            cfg.clone(),
+                        );
+                        let worst_worker =
+                            std::mem::replace(&mut workers[worst_worker_id], new_worker);
+                        fired_workers.push_back(worst_worker);
+                        if fired_workers.len() > workers.len() {
+                            fired_workers.pop_front();
+                        }
+                        just_respawned = true;
+                    }
                 }
             }
         }
+        unreachable!()
     });
     session.on_drop(move || {
         drop(uploader);
     });
     session
+}
+
+// guess whether the given slice is uniformly distributed
+fn uniform_pvalue(vals: &[usize]) -> f64 {
+    if vals.is_empty() {
+        return 0.0;
+    }
+    let total_count = vals.iter().sum::<usize>();
+    let min = vals.iter().min().copied().unwrap();
+    let distro = Binomial::new(total_count, 1.0 / (vals.len() as f64));
+    distro.distribution(min as f64)
 }

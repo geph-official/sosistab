@@ -1,4 +1,4 @@
-use crate::{buffer::Buff, fec::FrameEncoder, pacer::Pacer};
+use crate::{buffer::Buff, fec::FrameEncoder};
 use crate::{crypt::AeadError, mux::Multiplex, runtime, StatsGatherer};
 use crate::{crypt::NgAead, protocol::DataFrameV2};
 use machine::RecvMachine;
@@ -8,10 +8,7 @@ use smol::channel::{Receiver, Sender, TrySendError};
 use smol::prelude::*;
 use stats::StatsCalculator;
 
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{sync::Arc, time::Duration};
 use thiserror::Error;
 
 use self::dejitter::DejitterRecv;
