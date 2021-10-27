@@ -130,7 +130,7 @@ impl Session {
             .recv()
             .await
             .map_err(|_| SessionError::SessionDropped)?;
-        tracing::debug!("received {}", seqno);
+        tracing::trace!("received {}", seqno);
         self.statistics
             .increment("total_recv_bytes", recv.len() as f32);
         Ok(recv)
