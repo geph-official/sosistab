@@ -40,7 +40,7 @@ impl RttCalculator {
     }
 
     pub fn rto(&self) -> Duration {
-        Duration::from_secs_f64(self.inner.inverse_cdf(0.99) + 0.35)
+        Duration::from_secs_f64(self.inner.inverse_cdf(0.99) + 0.25)
     }
 
     // pub fn srtt(&self) -> Duration {
