@@ -34,8 +34,7 @@ impl CongestionControl for Highspeed {
         if self.cwnd < self.bdp as f64 {
             self.cwnd += 1.0
         } else {
-            self.cwnd +=
-                self.multiplier as f64 * ((0.23) * self.cwnd.powf(0.4)).max(1.0) / self.cwnd;
+            self.cwnd += self.multiplier as f64 * (self.cwnd.powf(0.5)).max(1.0) / self.cwnd;
             // tracing::debug!("ack {}", self.cwnd);
         }
     }

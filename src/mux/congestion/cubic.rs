@@ -37,7 +37,7 @@ impl Cubic {
 
 impl CongestionControl for Cubic {
     fn cwnd(&self) -> usize {
-        self.cwnd as usize
+        (self.cwnd).max(self.bdp) as usize
     }
 
     fn mark_ack(&mut self, current_bdp: usize) {
