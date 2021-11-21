@@ -7,7 +7,7 @@ use std::{
 use slab::Slab;
 use smol::{channel::Receiver, future::FutureExt};
 
-use crate::{EmaCalculator, MinQueue};
+use crate::EmaCalculator;
 
 enum DejitterEvt<T> {
     NewInject(Result<(T, u64), smol::channel::RecvError>),
