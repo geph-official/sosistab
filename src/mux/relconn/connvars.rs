@@ -10,7 +10,7 @@ use smol::channel::Receiver;
 use crate::{
     buffer::{Buff, BuffMut},
     mux::{
-        congestion::{CongestionControl, Cubic},
+        congestion::{CongestionControl, Cubic, Highspeed},
         structs::*,
     },
     pacer::Pacer,
@@ -60,9 +60,9 @@ impl Default for ConnVars {
             // next_pace_time: Instant::now(),
             lost_seqnos: BTreeSet::new(),
             last_loss: None,
-            cc: Box::new(Cubic::new(0.7, 0.4)),
+            // cc: Box::new(Cubic::new(0.7, 0.4)),
             pacer: Pacer::new(Duration::from_millis(1)),
-            // cc: Box::new(Highspeed::new(1)),
+            cc: Box::new(Highspeed::new(1)),
             // cc: Box::new(Trivial::new(00)),
         }
     }
@@ -158,14 +158,20 @@ impl ConnVars {
                 let seqnos = safe_deserialize::<Vec<Seqno>>(&payload)?;
                 // tracing::trace!("new ACK pkt with {} seqnos", seqnos.len());
                 for _ in 0..self.inflight.mark_acked_lt(seqno) {
-                    self.cc.mark_ack(self.inflight.bdp())
+                    self.cc.mark_ack(
+                        self.inflight.bdp(),
+                        self.inflight.min_rtt().as_millis() as usize,
+                    )
                 }
                 self.lost_seqnos.retain(|v| *v >= seqno);
                 assert_eq!(self.inflight.lost_count(), self.lost_seqnos.len());
                 for seqno in seqnos {
                     self.lost_seqnos.remove(&seqno);
                     if self.inflight.mark_acked(seqno) {
-                        self.cc.mark_ack(self.inflight.bdp());
+                        self.cc.mark_ack(
+                            self.inflight.bdp(),
+                            self.inflight.min_rtt().as_millis() as usize,
+                        );
                     }
                 }
                 self.check_closed()?;

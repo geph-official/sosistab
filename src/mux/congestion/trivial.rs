@@ -16,7 +16,7 @@ impl CongestionControl for Trivial {
         self.cwnd
     }
 
-    fn mark_ack(&mut self, _cp: usize) {}
+    fn mark_ack(&mut self, _cp: usize, _: usize) {}
 
     fn mark_loss(&mut self) {}
 }

@@ -10,7 +10,7 @@ pub trait CongestionControl {
     fn cwnd(&self) -> usize;
 
     /// React to an incoming acknowledgement of a single packet
-    fn mark_ack(&mut self, current_bdp: usize);
+    fn mark_ack(&mut self, current_bdp: usize, current_ping: usize);
 
     /// React to a loss event
     fn mark_loss(&mut self);

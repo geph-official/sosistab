@@ -40,7 +40,7 @@ impl CongestionControl for Cubic {
         (self.cwnd).max(self.bdp) as usize
     }
 
-    fn mark_ack(&mut self, current_bdp: usize) {
+    fn mark_ack(&mut self, current_bdp: usize, _: usize) {
         // tracing::debug!("ack => {:.2}", self.cwnd);
         // if no last_loss, just exponentially increase
         let max_cwnd = self.cwnd + (1.0f64).min(32.0 / self.cwnd);
