@@ -7,6 +7,7 @@ use std::{
 
 use anyhow::Context;
 use argh::FromArgs;
+use dhat::Dhat;
 use once_cell::sync::Lazy;
 
 use rand_chacha::rand_core::SeedableRng;
@@ -68,6 +69,8 @@ struct ServerArgs {
 #[argh(subcommand, name = "selftest")]
 struct SelfTestArgs {}
 
+// #[global_allocator]
+// static ALLOCATOR: dhat::DhatAlloc = dhat::DhatAlloc;
 fn main() -> anyhow::Result<()> {
     let (send_trace, recv_trace) = smol::channel::unbounded();
     let _trace_saver = smolscale::spawn(async move {
@@ -192,13 +195,14 @@ async fn client_main(args: ClientArgs) -> anyhow::Result<()> {
 }
 
 async fn server_main(args: ServerArgs) -> anyhow::Result<()> {
+    // let _dhat = Dhat::start_heap_profiling();
     let listener_udp =
         sosistab::Listener::listen_udp(args.listen, SNAKEOIL_SK.clone(), |_, _| (), |_, _| ())
             .await?;
     let listener_tcp =
         sosistab::Listener::listen_tcp(args.listen, SNAKEOIL_SK.clone(), |_, _| (), |_, _| ())
             .await?;
-    for count in 1u128.. {
+    for count in 1u128..3 {
         let session = listener_udp
             .accept_session()
             .race(listener_tcp.accept_session())
@@ -218,5 +222,5 @@ async fn server_main(args: ServerArgs) -> anyhow::Result<()> {
         });
         forked.detach();
     }
-    unreachable!()
+    Ok(())
 }
