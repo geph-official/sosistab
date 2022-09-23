@@ -1,6 +1,7 @@
-use std::{collections::BTreeMap, net::SocketAddr, sync::Arc, time::Instant};
+use std::{net::SocketAddr, sync::Arc, time::Instant};
 
 use crate::{buffer::Buff, SVec, SessionBack};
+use dashmap::DashMap;
 use parking_lot::RwLock;
 use rand::Rng;
 use rustc_hash::FxHashMap;
@@ -56,14 +57,13 @@ struct SessEntry {
     addrs: Arc<RwLock<ShardedAddrs>>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub(crate) struct SessionTable {
-    token_to_sess: BTreeMap<Buff, SessEntry>,
-    addr_to_token: BTreeMap<SocketAddr, Buff>,
+    token_to_sess: Arc<DashMap<Buff, SessEntry>>,
+    addr_to_token: Arc<DashMap<SocketAddr, Buff>>,
 }
 
 impl SessionTable {
-    #[tracing::instrument(skip(self), level = "trace")]
     pub fn rebind(&mut self, addr: SocketAddr, shard_id: u8, token: Buff) -> bool {
         if let Some(entry) = self.token_to_sess.get(&token) {
             let old = entry.addrs.write().insert_addr(shard_id, addr);
@@ -77,21 +77,18 @@ impl SessionTable {
             false
         }
     }
-
-    #[tracing::instrument(skip(self), level = "trace")]
     pub fn delete(&mut self, token: Buff) {
         if let Some(entry) = self.token_to_sess.remove(&token) {
-            for (addr, _) in entry.addrs.read().map.values() {
+            for (addr, _) in entry.1.addrs.read().map.values() {
                 self.addr_to_token.remove(addr);
             }
         }
     }
 
-    #[tracing::instrument(skip(self), level = "trace")]
-    pub fn lookup(&self, addr: SocketAddr) -> Option<&SessionBack> {
+    pub fn lookup(&self, addr: SocketAddr) -> Option<Arc<SessionBack>> {
         let token = self.addr_to_token.get(&addr)?;
-        let entry = self.token_to_sess.get(token)?;
-        Some(&entry.session_back)
+        let entry = self.token_to_sess.get(token.value())?;
+        Some(entry.session_back.clone())
     }
 
     #[tracing::instrument(skip(self, session_back, locked_addrs), level = "trace")]

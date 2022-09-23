@@ -45,7 +45,7 @@ pub struct Listener {
     accepted: Receiver<Session>,
     local_addr: SocketAddr,
     stats: Arc<ListenerStats>,
-    _task: smol::Task<()>,
+    _task: Vec<smol::Task<()>>,
 }
 
 impl Listener {
@@ -66,15 +66,15 @@ impl Listener {
         let cookie = Cookie::new((&long_sk).into());
         let (send, recv) = smol::channel::unbounded();
         let stats: Arc<ListenerStats> = Default::default();
-        let task = runtime::spawn(
-            ListenerActor::new(
-                Arc::new(StatsBackhaul::new(socket, on_recv, on_send)),
-                cookie,
-                long_sk,
-                stats.clone(),
-            )
-            .run(send),
+        let la = ListenerActor::new(
+            Arc::new(StatsBackhaul::new(socket, on_recv, on_send)),
+            cookie,
+            long_sk,
+            stats.clone(),
         );
+        let task = (0..std::thread::available_parallelism().unwrap().get())
+            .map(|_| runtime::spawn(la.clone().run(send.clone())))
+            .collect();
         Ok(Listener {
             accepted: recv,
             local_addr,
@@ -110,7 +110,7 @@ impl Listener {
             accepted: recv,
             local_addr,
             stats,
-            _task: task,
+            _task: vec![task],
         })
     }
 
@@ -125,6 +125,7 @@ impl Listener {
     }
 }
 
+#[derive(Clone)]
 struct ListenerActor {
     socket: Arc<dyn Backhaul>,
     cookie: Cookie,
@@ -158,7 +159,6 @@ impl ListenerActor {
         }
     }
 
-    #[tracing::instrument(skip(self), level = "trace")]
     async fn run(mut self, accepted: Sender<Session>) {
         // channel for dropping sessions
         let (send_dead, recv_dead) = smol::channel::unbounded();

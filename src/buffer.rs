@@ -13,7 +13,7 @@ use std::{
 // static BUFF_POOL: Lazy<ConcurrentQueue<Vec<u8>>> = Lazy::new(|| ConcurrentQueue::bounded(10000));
 
 /// Represents a *mutable* buffer optimized for packet-sized payloads.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Hash)]
 #[serde(transparent)]
 pub struct BuffMut {
     inner: Vec<u8>,
@@ -79,7 +79,8 @@ impl BuffMut {
 }
 
 /// Represents an *immutable* buffer.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Hash)]
+#[allow(clippy::derive_hash_xor_eq)]
 #[serde(from = "BuffMut")]
 pub struct Buff {
     frozen: Arc<BuffMut>,
