@@ -51,7 +51,10 @@ impl TcpServerBackhaul {
 #[async_trait::async_trait]
 impl Backhaul for TcpServerBackhaul {
     async fn recv_from(&self) -> std::io::Result<(Buff, SocketAddr)> {
-        Ok(self.recv_upcoming.recv().await.unwrap())
+        self.recv_upcoming
+            .recv()
+            .await
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::BrokenPipe, e.to_string()))
     }
 
     async fn send_to(&self, to_send: Buff, dest: SocketAddr) -> std::io::Result<()> {
