@@ -29,7 +29,7 @@ impl RelConn {
         dropper: impl FnOnce() + Send + 'static,
         additional_info: Option<String>,
     ) -> (Self, RelConnBack) {
-        let (send_write, recv_write) = bipe::bipe(10);
+        let (send_write, recv_write) = bipe::bipe(1000);
         let (send_read, recv_read) = bipe::bipe(2000);
         let (send_wire_read, recv_wire_read) = smol::channel::bounded(1000);
         let aic = additional_info.clone();

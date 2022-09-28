@@ -64,7 +64,7 @@ pub(crate) struct SessionTable {
 }
 
 impl SessionTable {
-    pub fn rebind(&mut self, addr: SocketAddr, shard_id: u8, token: Buff) -> bool {
+    pub fn rebind(&self, addr: SocketAddr, shard_id: u8, token: Buff) -> bool {
         if let Some(entry) = self.token_to_sess.get(&token) {
             let old = entry.addrs.write().insert_addr(shard_id, addr);
             tracing::trace!("binding {}=>{}", shard_id, addr);
@@ -77,7 +77,7 @@ impl SessionTable {
             false
         }
     }
-    pub fn delete(&mut self, token: Buff) {
+    pub fn delete(&self, token: Buff) {
         if let Some(entry) = self.token_to_sess.remove(&token) {
             for (addr, _) in entry.1.addrs.read().map.values() {
                 self.addr_to_token.remove(addr);
@@ -93,7 +93,7 @@ impl SessionTable {
 
     #[tracing::instrument(skip(self, session_back, locked_addrs), level = "trace")]
     pub fn new_sess(
-        &mut self,
+        &self,
         token: Buff,
         session_back: Arc<SessionBack>,
         locked_addrs: Arc<RwLock<ShardedAddrs>>,

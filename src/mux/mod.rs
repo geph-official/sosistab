@@ -55,13 +55,10 @@ impl Multiplex {
     }
 
     /// Sends an unreliable message to the other side
-    #[tracing::instrument(skip(self, msg), level = "trace")]
     pub async fn send_urel(&self, msg: impl Into<Buff>) -> std::io::Result<()> {
         self.urel_send.send(msg.into()).await.map_err(to_ioerror)
     }
 
-    /// Receive an unreliable message
-    #[tracing::instrument(skip(self), level = "trace")]
     pub async fn recv_urel(&self) -> std::io::Result<Buff> {
         self.urel_recv.recv().await.map_err(to_ioerror)
     }

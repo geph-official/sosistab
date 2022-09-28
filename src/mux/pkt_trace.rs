@@ -31,37 +31,37 @@ impl PktTraceCtx {
     }
     /// Traces a packet.
     pub fn trace_pkt(&self, pkt: &Message, direction: bool) {
-        let timestamp = START_TIME.elapsed().as_secs_f64();
-        let evt = match pkt {
-            Message::Empty => PktTraceEvt::Empty {
-                mux_id: self.mux_uniqid,
-                timestamp,
-                direction,
-            },
-            Message::Rel {
-                kind,
-                stream_id,
-                seqno,
-                payload,
-            } => PktTraceEvt::Rel {
-                mux_id: self.mux_uniqid,
-                timestamp,
-                direction,
-                kind: *kind,
-                stream_id: *stream_id,
-                seqno: *seqno,
-                body_length: payload.len(),
-            },
-            Message::Urel(buff) => PktTraceEvt::Urel {
-                mux_id: self.mux_uniqid,
-                timestamp,
-                direction,
-                body_length: buff.len(),
-            },
-        };
-        let line = serde_json::to_string(&evt).unwrap();
-        tracing::trace!("trace_pkt: {}", line);
         if let Some(cb) = PACKET_TRACE_SINK.get() {
+            let timestamp = START_TIME.elapsed().as_secs_f64();
+            let evt = match pkt {
+                Message::Empty => PktTraceEvt::Empty {
+                    mux_id: self.mux_uniqid,
+                    timestamp,
+                    direction,
+                },
+                Message::Rel {
+                    kind,
+                    stream_id,
+                    seqno,
+                    payload,
+                } => PktTraceEvt::Rel {
+                    mux_id: self.mux_uniqid,
+                    timestamp,
+                    direction,
+                    kind: *kind,
+                    stream_id: *stream_id,
+                    seqno: *seqno,
+                    body_length: payload.len(),
+                },
+                Message::Urel(buff) => PktTraceEvt::Urel {
+                    mux_id: self.mux_uniqid,
+                    timestamp,
+                    direction,
+                    body_length: buff.len(),
+                },
+            };
+            let line = serde_json::to_string(&evt).unwrap();
+            tracing::trace!("trace_pkt: {}", line);
             cb(line);
         }
     }
