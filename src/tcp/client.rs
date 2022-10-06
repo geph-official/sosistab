@@ -105,7 +105,12 @@ impl TcpClientBackhaul {
             let mut to_send = to_send.to_bytes();
             let random_padding = vec![0u8; rand::random::<usize>() % 1024];
             to_send.extend_from_slice(&random_padding);
-            write_encrypted(init_enc, &to_send, &mut remote).await?;
+            let mut buf = vec![];
+            write_encrypted(init_enc, &to_send, &mut buf).await?;
+            for chunk in buf.chunks(1) {
+                remote.write_all(chunk).await?;
+                smol::Timer::after(Duration::from_millis(10)).await;
+            }
             // now we wait for a response
             let init_dn_key = blake3::keyed_hash(TCP_DN_KEY, &init_s2c);
             let init_dec = NgAead::new(init_dn_key.as_bytes());
