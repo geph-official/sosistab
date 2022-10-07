@@ -11,8 +11,6 @@ use stats::StatsCalculator;
 use std::{sync::Arc, time::Duration};
 use thiserror::Error;
 
-use self::dejitter::DejitterRecv;
-mod dejitter;
 mod machine;
 mod rloss;
 mod stats;
@@ -42,7 +40,7 @@ pub enum SessionError {
 /// [Session] should be used directly only if an unreliable connection is all you need. For most applications, use [Multiplex](crate::mux::Multiplex), which wraps a [Session] and provides QUIC-like reliable streams as well as unreliable messages, all multiplexed over a single [Session].
 pub struct Session {
     send_tosend: Sender<Buff>,
-    recv_decoded: futures_intrusive::sync::Mutex<DejitterRecv<Buff>>,
+    recv_decoded: Receiver<Buff>,
     statistics: Arc<StatsGatherer>,
     dropper: Vec<Box<dyn FnOnce() + Send + Sync + 'static>>,
     _task: smol::Task<()>,
@@ -70,7 +68,7 @@ impl Session {
             cfg.role,
         ));
 
-        let (send_decoded, recv_decoded) = smol::channel::unbounded();
+        let (send_decoded, recv_decoded) = smol::channel::bounded(256);
         let (send_outgoing, recv_outgoing) = smol::channel::bounded(1024);
         let session_back = SessionBack {
             machine,
@@ -91,8 +89,6 @@ impl Session {
             send_crypt,
             send_outgoing,
         };
-        let recv_decoded =
-            futures_intrusive::sync::Mutex::new(DejitterRecv::new(recv_decoded), false);
         let task = runtime::spawn(session_send_loop(ctx));
         let session = Session {
             send_tosend,
@@ -123,14 +119,11 @@ impl Session {
 
     /// Waits until the next application input is decoded by the session.
     pub async fn recv_bytes(&self) -> Result<Buff, SessionError> {
-        let (recv, seqno) = self
+        let recv = self
             .recv_decoded
-            .lock()
-            .await
             .recv()
             .await
             .map_err(|_| SessionError::SessionDropped)?;
-        tracing::trace!("received {}", seqno);
         self.statistics
             .increment("total_recv_bytes", recv.len() as f32);
         Ok(recv)
@@ -145,7 +138,7 @@ impl Session {
 /// "Back side" of a Session.
 pub(crate) struct SessionBack {
     machine: Mutex<RecvMachine>,
-    send_decoded: Sender<(Buff, u64)>,
+    send_decoded: Sender<Buff>,
     recv_outgoing: Receiver<Buff>,
 }
 
@@ -155,7 +148,7 @@ impl SessionBack {
         let decoded = self.machine.lock().process(pkt)?;
         if let Some(decoded) = decoded {
             for decoded in decoded {
-                let _ = self.send_decoded.try_send(decoded);
+                let _ = self.send_decoded.try_send(decoded.0);
             }
         }
         Ok(())
