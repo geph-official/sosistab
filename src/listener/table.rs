@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, sync::Arc, time::Instant};
+use std::{collections::BTreeMap, net::SocketAddr, sync::Arc, time::Instant};
 
 use crate::{buffer::Buff, SVec, SessionBack};
 use dashmap::DashMap;
@@ -59,49 +59,55 @@ struct SessEntry {
 
 #[derive(Default, Clone)]
 pub(crate) struct SessionTable {
-    token_to_sess: Arc<DashMap<Buff, SessEntry>>,
-    addr_to_token: Arc<DashMap<SocketAddr, Buff>>,
+    token_to_sess: Arc<RwLock<BTreeMap<Buff, SessEntry>>>,
+    addr_to_token: Arc<RwLock<BTreeMap<SocketAddr, Buff>>>,
 }
 
 impl SessionTable {
     pub fn rebind(&self, addr: SocketAddr, shard_id: u8, token: Buff) -> bool {
-        if let Some(entry) = self.token_to_sess.get(&token) {
+        let token_to_sess = self.token_to_sess.write();
+        let mut addr_to_token = self.addr_to_token.write();
+        if let Some(entry) = token_to_sess.get(&token) {
             let old = entry.addrs.write().insert_addr(shard_id, addr);
             tracing::trace!("binding {}=>{}", shard_id, addr);
             if let Some(old) = old {
-                self.addr_to_token.remove(&old);
+                addr_to_token.remove(&old);
             }
-            self.addr_to_token.insert(addr, token);
+            addr_to_token.insert(addr, token);
             true
         } else {
             false
         }
     }
     pub fn delete(&self, token: Buff) {
-        if let Some(entry) = self.token_to_sess.remove(&token) {
-            for (addr, _) in entry.1.addrs.read().map.values() {
-                self.addr_to_token.remove(addr);
+        let mut token_to_sess = self.token_to_sess.write();
+        let mut addr_to_token = self.addr_to_token.write();
+        if let Some(entry) = token_to_sess.remove(&token) {
+            for (addr, _) in entry.addrs.read().map.values() {
+                addr_to_token.remove(addr);
             }
         }
     }
 
     pub fn lookup(&self, addr: SocketAddr) -> Option<Arc<SessionBack>> {
-        let token = self.addr_to_token.get(&addr)?;
-        let entry = self.token_to_sess.get(token.value())?;
+        let token_to_sess = self.token_to_sess.read();
+        let addr_to_token = self.addr_to_token.read();
+        let token = addr_to_token.get(&addr)?;
+        let entry = token_to_sess.get(token)?;
         Some(entry.session_back.clone())
     }
 
-    #[tracing::instrument(skip(self, session_back, locked_addrs), level = "trace")]
     pub fn new_sess(
         &self,
         token: Buff,
         session_back: Arc<SessionBack>,
         locked_addrs: Arc<RwLock<ShardedAddrs>>,
     ) {
+        let mut token_to_sess = self.token_to_sess.write();
         let entry = SessEntry {
             session_back,
             addrs: locked_addrs,
         };
-        self.token_to_sess.insert(token, entry);
+        token_to_sess.insert(token, entry);
     }
 }
