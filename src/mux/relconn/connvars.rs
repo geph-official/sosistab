@@ -10,7 +10,7 @@ use smol::channel::Receiver;
 use crate::{
     buffer::{Buff, BuffMut},
     mux::{
-        congestion::{CongestionControl, Cubic, Highspeed},
+        congestion::{CongestionControl, Highspeed},
         structs::*,
     },
     pacer::Pacer,

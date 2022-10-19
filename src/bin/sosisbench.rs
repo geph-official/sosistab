@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::Context;
 use argh::FromArgs;
-use dhat::Dhat;
+
 use once_cell::sync::Lazy;
 
 use rand_chacha::rand_core::SeedableRng;

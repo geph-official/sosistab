@@ -181,7 +181,7 @@ impl ListenerActor {
                 Evt::DeadSess(resume_token) => {
                     self.session_table.delete(resume_token);
                 }
-                Evt::NewRecv((vv)) => {
+                Evt::NewRecv(vv) => {
                     for (buffer, addr) in vv {
                         self.stats.packets_processed.fetch_add(1, Ordering::Relaxed);
                         // first we attempt to map this to an existing session

@@ -6,12 +6,6 @@ use std::{
     sync::Arc,
 };
 
-// thread_local! {
-//     static BUFF_POOL: RefCell<Vec<Vec<u8>>> = Default::default()
-// }
-
-// static BUFF_POOL: Lazy<ConcurrentQueue<Vec<u8>>> = Lazy::new(|| ConcurrentQueue::bounded(10000));
-
 /// Represents a *mutable* buffer optimized for packet-sized payloads.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Hash)]
 #[serde(transparent)]

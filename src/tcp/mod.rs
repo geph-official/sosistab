@@ -34,7 +34,7 @@ impl ObfsTcp {
     /// creates an ObfsTCP given a shared secret and direction
     fn new(ss: blake3::Hash, is_server: bool, inner: TcpStream) -> Self {
         let up_chacha = Arc::new(Mutex::new(
-            ChaCha8::new_var(
+            ChaCha8::new_var( 
                 blake3::keyed_hash(TCP_UP_KEY, ss.as_bytes()).as_bytes(),
                 &[0; 8],
             )

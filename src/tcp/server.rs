@@ -147,7 +147,7 @@ async fn backhaul_one(
                     .await
                     .context("cannot read fakeaddr")?;
                 let addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::from(fake_addr)), 0);
-                return backhaul_one_inner(obfs_tcp, addr, &down_table, &send_upcoming).await;
+                return backhaul_one_inner_obfs(obfs_tcp, addr, &down_table, &send_upcoming).await;
             }
         }
     }
@@ -155,7 +155,7 @@ async fn backhaul_one(
 }
 
 /// handle an already initialized TCP stream
-async fn backhaul_one_inner(
+async fn backhaul_one_inner_obfs(
     obfs_tcp: ObfsTcp,
     addr: SocketAddr,
     down_table: &DownTable,

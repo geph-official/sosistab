@@ -1,11 +1,10 @@
 use std::{
-    cmp::Reverse,
     time::{Duration, Instant},
 };
 
-use ordered_float::OrderedFloat;
 
-use crate::{EmaCalculator, MinQueue};
+
+use crate::{EmaCalculator};
 
 pub struct RttCalculator {
     inner: EmaCalculator,
