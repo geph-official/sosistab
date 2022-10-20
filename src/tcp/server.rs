@@ -140,7 +140,7 @@ async fn backhaul_one(
                 };
                 write_encrypted(s2c_enc, &response.to_bytes(), &mut client).await?;
                 let ss = triple_ecdh(&seckey, &my_eph_sk, &long_pk, &eph_pk);
-                let obfs_tcp = ObfsTcp::new(ss, true, client);
+                let obfs_tcp = ObfsTcp::new(ss, true, Box::new(client.clone()), Box::new(client));
                 let mut fake_addr = [0u8; 16];
                 obfs_tcp
                     .read_exact(&mut fake_addr)

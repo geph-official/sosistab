@@ -45,11 +45,18 @@ impl ClientConfig {
             server_pubkey: server_pk,
             backhaul_gen: match self.protocol {
                 Protocol::DirectTcp => Arc::new(move || {
-                    Arc::new(TcpClientBackhaul::new(None).add_remote_key(server_addr, server_pk))
+                    Arc::new(
+                        TcpClientBackhaul::new(None, false).add_remote_key(server_addr, server_pk),
+                    )
+                }),
+                Protocol::DirectTls => Arc::new(move || {
+                    Arc::new(
+                        TcpClientBackhaul::new(None, true).add_remote_key(server_addr, server_pk),
+                    )
                 }),
                 Protocol::ProxiedTcp(cnctr) => Arc::new(move || {
                     Arc::new(
-                        TcpClientBackhaul::new(Some(cnctr.clone()))
+                        TcpClientBackhaul::new(Some(cnctr.clone()), false)
                             .add_remote_key(server_addr, server_pk),
                     )
                 }),
@@ -73,6 +80,8 @@ impl ClientConfig {
 pub enum Protocol {
     /// "Direct" TCP that does not go through a proxy.
     DirectTcp,
+    /// "Direct" TLS.
+    DirectTls,
     /// "Proxied" TCP that instead calls a function that returns a TCP connection.
     ProxiedTcp(Connector),
     /// "Direct UDP that does not go through a proxy.
@@ -115,7 +124,7 @@ pub async fn connect_tcp(
         server_addr,
         server_pubkey: pubkey,
         backhaul_gen: Arc::new(move || {
-            Arc::new(TcpClientBackhaul::new(None).add_remote_key(server_addr, pubkey))
+            Arc::new(TcpClientBackhaul::new(None, false).add_remote_key(server_addr, pubkey))
         }),
         num_shards: 16,
         reset_interval: None,

@@ -66,8 +66,9 @@ serde_json = "1.0.73"
 priority-queue = "1.2.1"
 slab = "0.4.5"
 dhat = "0.2.4"
-async-native-tls = {version = "0.4.0", features=["vendored"]}
+async-native-tls = { version = "0.4.0", features = ["vendored"] }
 moka = "0.9.4"
+native-tls = "0.2.10"
 # sliding_extrema = "0.1.4"
 
 [profile.release]

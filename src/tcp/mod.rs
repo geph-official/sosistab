@@ -6,8 +6,8 @@ use c2_chacha::{stream_cipher::NewStreamCipher, stream_cipher::SyncStreamCipher,
 
 use parking_lot::Mutex;
 
+use smol::io::BufReader;
 use smol::prelude::*;
-use smol::{io::BufReader, net::TcpStream};
 
 mod client;
 pub use client::*;
@@ -21,20 +21,23 @@ const CONN_LIFETIME: Duration = Duration::from_secs(600);
 const TCP_UP_KEY: &[u8; 32] = b"uploadtcp-----------------------";
 const TCP_DN_KEY: &[u8; 32] = b"downloadtcp---------------------";
 
+type DynAsyncWrite = Box<dyn AsyncWrite + Unpin + Send + Sync + 'static>;
+type DynAsyncRead = Box<dyn AsyncRead + Unpin + Send + Sync + 'static>;
+
 /// Wrapped TCP connection, with a send and receive obfuscation key.
 #[derive(Clone)]
 struct ObfsTcp {
-    inner: TcpStream,
-    buf_read: async_dup::Arc<async_dup::Mutex<BufReader<TcpStream>>>,
+    write: async_dup::Arc<async_dup::Mutex<DynAsyncWrite>>,
+    read: async_dup::Arc<async_dup::Mutex<BufReader<DynAsyncRead>>>,
     send_chacha: Arc<Mutex<ChaCha8>>,
     recv_chacha: Arc<Mutex<ChaCha8>>,
 }
 
 impl ObfsTcp {
     /// creates an ObfsTCP given a shared secret and direction
-    fn new(ss: blake3::Hash, is_server: bool, inner: TcpStream) -> Self {
+    fn new(ss: blake3::Hash, is_server: bool, write: DynAsyncWrite, read: DynAsyncRead) -> Self {
         let up_chacha = Arc::new(Mutex::new(
-            ChaCha8::new_var( 
+            ChaCha8::new_var(
                 blake3::keyed_hash(TCP_UP_KEY, ss.as_bytes()).as_bytes(),
                 &[0; 8],
             )
@@ -47,21 +50,19 @@ impl ObfsTcp {
             )
             .unwrap(),
         ));
-        let buf_read = async_dup::Arc::new(async_dup::Mutex::new(BufReader::with_capacity(
-            65536,
-            inner.clone(),
-        )));
+        let buf_read =
+            async_dup::Arc::new(async_dup::Mutex::new(BufReader::with_capacity(65536, read)));
         if is_server {
             Self {
-                inner,
-                buf_read,
+                write: async_dup::Arc::new(async_dup::Mutex::new(write)),
+                read: buf_read,
                 send_chacha: dn_chacha,
                 recv_chacha: up_chacha,
             }
         } else {
             Self {
-                inner,
-                buf_read,
+                write: async_dup::Arc::new(async_dup::Mutex::new(write)),
+                read: buf_read,
                 send_chacha: up_chacha,
                 recv_chacha: dn_chacha,
             }
@@ -74,14 +75,14 @@ impl ObfsTcp {
         let buf = &mut buf[..msg.len()];
         buf.copy_from_slice(msg);
         self.send_chacha.lock().apply_keystream(buf);
-        let mut inner = self.inner.clone();
+        let mut inner = self.write.clone();
         inner.write_all(buf).await?;
         inner.flush().await?;
         Ok(())
     }
 
     async fn read_exact(&self, buf: &mut [u8]) -> std::io::Result<()> {
-        self.buf_read.lock().read_exact(buf).await?;
+        self.read.lock().read_exact(buf).await?;
         self.recv_chacha.lock().apply_keystream(buf);
         Ok(())
     }

@@ -5,7 +5,7 @@ use smol::prelude::*;
 use std::{
     collections::VecDeque,
     convert::TryInto,
-    net::{Shutdown, SocketAddr},
+    net::SocketAddr,
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -19,7 +19,10 @@ use crate::{
 use anyhow::Context;
 use smol_timeout::TimeoutExt;
 
-use super::{read_encrypted, write_encrypted, ObfsTcp, CONN_LIFETIME, TCP_DN_KEY, TCP_UP_KEY};
+use super::{
+    read_encrypted, write_encrypted, DynAsyncRead, DynAsyncWrite, ObfsTcp, CONN_LIFETIME,
+    TCP_DN_KEY, TCP_UP_KEY,
+};
 
 /// A TCP-based backhaul, client-side.
 pub struct TcpClientBackhaul {
@@ -30,11 +33,12 @@ pub struct TcpClientBackhaul {
     send_incoming: Sender<(Buff, SocketAddr)>,
 
     connect: Connector,
+    tls: bool,
 }
 
 impl TcpClientBackhaul {
     /// Creates a new TCP client backhaul.
-    pub fn new(connect: Option<Connector>) -> Self {
+    pub fn new(connect: Option<Connector>, tls: bool) -> Self {
         // dummy here
         let (send_incoming, incoming) = smol::channel::unbounded();
         let fake_addr = rand::random::<u128>();
@@ -47,6 +51,7 @@ impl TcpClientBackhaul {
             connect: connect.unwrap_or_else(move || {
                 Arc::new(move |addr| smol::net::TcpStream::connect(addr).boxed())
             }),
+            tls,
         }
     }
 
@@ -64,7 +69,6 @@ impl TcpClientBackhaul {
                 if age < CONN_LIFETIME {
                     return Some((conn, time));
                 }
-                let _ = conn.inner.shutdown(Shutdown::Both);
             }
         }
         None
@@ -90,8 +94,22 @@ impl TcpClientBackhaul {
                 .ok_or_else(|| anyhow::anyhow!("remote address doesn't have a public key"))?;
             let cookie = Cookie::new(pubkey);
             // first connect
-            let mut remote = (self.connect)(addr).await?;
-            remote.set_nodelay(true)?;
+            let (mut remote_write, mut remote_read): (DynAsyncWrite, DynAsyncRead) = if self.tls {
+                let tcp = (self.connect)(addr).await?;
+                let connector = async_native_tls::TlsConnector::new()
+                    .danger_accept_invalid_certs(true)
+                    .danger_accept_invalid_hostnames(true)
+                    .use_sni(false);
+                let tls = async_dup::Arc::new(async_dup::Mutex::new(
+                    connector.connect("example.com", tcp).await?,
+                ));
+                eprintln!("*** TLS ESTABLISHED YAAAY!!!! ***");
+                (Box::new(tls.clone()), Box::new(tls))
+            } else {
+                let tcp = (self.connect)(addr).await?;
+                (Box::new(tcp.clone()), Box::new(tcp))
+            };
+
             // then we send a hello
             let init_c2s = cookie.generate_c2s().next().unwrap();
             let init_s2c = cookie.generate_s2c().next().unwrap();
@@ -108,13 +126,13 @@ impl TcpClientBackhaul {
             let mut buf = vec![];
             write_encrypted(init_enc, &to_send, &mut buf).await?;
             for chunk in buf.chunks(1) {
-                remote.write_all(chunk).await?;
+                remote_write.write_all(chunk).await?;
                 smol::Timer::after(Duration::from_millis(10)).await;
             }
             // now we wait for a response
             let init_dn_key = blake3::keyed_hash(TCP_DN_KEY, &init_s2c);
             let init_dec = NgAead::new(init_dn_key.as_bytes());
-            let raw_response = read_encrypted(init_dec, &mut remote)
+            let raw_response = read_encrypted(init_dec, &mut remote_read)
                 .await
                 .context("can't read response from server")?;
             let actual_response = HandshakeFrame::from_bytes(&raw_response)?;
@@ -125,7 +143,7 @@ impl TcpClientBackhaul {
             } = actual_response
             {
                 let shared_sec = triple_ecdh(&my_long_sk, &my_eph_sk, &long_pk, &eph_pk);
-                let connection = ObfsTcp::new(shared_sec, false, remote);
+                let connection = ObfsTcp::new(shared_sec, false, remote_write, remote_read);
                 connection.write(&self.fake_addr.to_be_bytes()).await?;
                 let down_conn = connection.clone();
                 let send_incoming = self.send_incoming.clone();
