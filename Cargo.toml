@@ -69,6 +69,7 @@ dhat = "0.2.4"
 async-native-tls = { version = "0.4.0", features = ["vendored"] }
 moka = "0.9.4"
 native-tls = "0.2.10"
+eff-wordlist = "1.0.2"
 # sliding_extrema = "0.1.4"
 
 [profile.release]

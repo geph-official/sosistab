@@ -1,3 +1,4 @@
+use async_native_tls::Protocol;
 use dashmap::DashMap;
 use rustc_hash::FxHashMap;
 use smol::channel::{Receiver, Sender};
@@ -100,11 +101,18 @@ impl TcpClientBackhaul {
                 let connector = async_native_tls::TlsConnector::new()
                     .danger_accept_invalid_certs(true)
                     .danger_accept_invalid_hostnames(true)
-                    .use_sni(false);
+                    .min_protocol_version(Some(Protocol::Tlsv12))
+                    .max_protocol_version(Some(Protocol::Tlsv12))
+                    .use_sni(true);
+                let fake_domain = format!(
+                    "{}.{}.com",
+                    eff_wordlist::large::random_word(),
+                    eff_wordlist::large::random_word()
+                );
                 let tls = async_dup::Arc::new(async_dup::Mutex::new(
-                    connector.connect("example.com", tcp).await?,
+                    connector.connect(&fake_domain, tcp).await?,
                 ));
-                eprintln!("*** TLS ESTABLISHED YAAAY!!!! ***");
+                eprintln!("*** TLS ESTABLISHED YAAAY!!!! (fake domain {fake_domain}) ***");
                 (Box::new(tls.clone()), Box::new(tls))
             } else {
                 let tcp = (self.connect)(addr).await?;
