@@ -96,6 +96,7 @@ impl TcpClientBackhaul {
             // first connect
             let (mut remote_write, mut remote_read): (DynAsyncWrite, DynAsyncRead) = if self.tls {
                 let tcp = (self.connect)(addr).await?;
+                tcp.set_nodelay(true)?;
                 let connector = async_native_tls::TlsConnector::new()
                     .danger_accept_invalid_certs(true)
                     .danger_accept_invalid_hostnames(true)
@@ -107,6 +108,7 @@ impl TcpClientBackhaul {
                 (Box::new(tls.clone()), Box::new(tls))
             } else {
                 let tcp = (self.connect)(addr).await?;
+                tcp.set_nodelay(true)?;
                 (Box::new(tcp.clone()), Box::new(tcp))
             };
 
