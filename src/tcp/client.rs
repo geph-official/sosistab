@@ -156,9 +156,8 @@ impl TcpClientBackhaul {
                             let length =
                                 u16::from_be_bytes((&buffer[..2]).try_into().unwrap()) as usize;
                             down_conn.read_exact(&mut buffer[..length]).await?;
-                            send_incoming
-                                .send((Buff::copy_from_slice(&buffer[..length]), addr))
-                                .await?;
+                            let _ = send_incoming
+                                .try_send((Buff::copy_from_slice(&buffer[..length]), addr));
                         }
                     };
                     let _: anyhow::Result<()> = main
