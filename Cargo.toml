@@ -79,6 +79,7 @@ debug=2
 
 [target.'cfg(unix)'.dependencies]
 nix= "0.23.0"
+fastudp="0.1.1"
 
 [dev-dependencies]
 

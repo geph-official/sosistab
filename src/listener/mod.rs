@@ -1,3 +1,4 @@
+use crate::tcp::TcpServerBackhaul;
 use crate::{
     backhaul::{Backhaul, StatsBackhaul},
     crypt::{triple_ecdh, Cookie, LegacyAead},
@@ -9,7 +10,6 @@ use crate::{
     recfilter::RECENT_FILTER,
     session::{Session, SessionConfig},
 };
-use crate::{tcp::TcpServerBackhaul, SVec};
 use parking_lot::RwLock;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -61,7 +61,10 @@ impl Listener {
         on_recv: impl Fn(usize, SocketAddr) + 'static + Send + Sync,
         on_send: impl Fn(usize, SocketAddr) + 'static + Send + Sync,
     ) -> std::io::Result<Self> {
+        #[cfg(not(unix))]
         let socket = runtime::new_udp_socket_bind(addr)?;
+        #[cfg(unix)]
+        let socket = fastudp::FastUdpSocket::from(std::net::UdpSocket::bind(addr)?);
         let local_addr = socket.get_ref().local_addr().unwrap();
         let cookie = Cookie::new((&long_sk).into());
         let (send, recv) = smol::channel::unbounded();
@@ -165,13 +168,13 @@ impl ListenerActor {
 
         // two possible events
         enum Evt {
-            NewRecv(SVec<(Buff, SocketAddr)>),
+            NewRecv((Buff, SocketAddr)),
             DeadSess(Buff),
         }
 
         loop {
             let event = smol::future::race(
-                async { Evt::NewRecv(self.socket.recv_from_many().await.unwrap()) },
+                async { Evt::NewRecv(self.socket.recv_from().await.unwrap()) },
                 async { Evt::DeadSess(recv_dead.recv().await.unwrap()) },
             );
             self.stats
@@ -181,56 +184,49 @@ impl ListenerActor {
                 Evt::DeadSess(resume_token) => {
                     self.session_table.delete(resume_token);
                 }
-                Evt::NewRecv(vv) => {
-                    for (buffer, addr) in vv {
-                        self.stats.packets_processed.fetch_add(1, Ordering::Relaxed);
-                        // first we attempt to map this to an existing session
-                        if let Some(handle) = self.session_table.lookup(addr) {
-                            self.stats.injecting.store(true, Ordering::Relaxed);
-                            scopeguard::defer!(self
-                                .stats
-                                .injecting
-                                .store(false, Ordering::Relaxed));
-                            if handle.inject_incoming(&buffer).is_ok() {
-                                continue;
-                            }
+                Evt::NewRecv((buffer, addr)) => {
+                    self.stats.packets_processed.fetch_add(1, Ordering::Relaxed);
+                    // first we attempt to map this to an existing session
+                    if let Some(handle) = self.session_table.lookup(addr) {
+                        self.stats.injecting.store(true, Ordering::Relaxed);
+                        scopeguard::defer!(self.stats.injecting.store(false, Ordering::Relaxed));
+                        if handle.inject_incoming(&buffer).is_ok() {
+                            continue;
                         }
-                        // we know it's not part of an existing session then. we decrypt it under the current key
-                        let stats = self.stats.clone();
-                        stats.handshaking.store(true, Ordering::Relaxed);
-                        scopeguard::defer!(stats.handshaking.store(false, Ordering::Relaxed));
-                        let s2c_key = self.cookie.generate_s2c().next().unwrap();
-                        let mut failed = true;
-                        for possible_key in self.cookie.generate_c2s() {
-                            let crypter = LegacyAead::new(&possible_key);
-                            if let Some(handshake) =
-                                crypter.pad_decrypt_v1::<HandshakeFrame>(&buffer)
-                            {
-                                if !RECENT_FILTER.lock().check(&buffer) {
-                                    tracing::debug!(
-                                        "discarding replay attempt with len {}",
-                                        buffer.len()
-                                    );
-                                    self.stats.packets_replay.fetch_add(1, Ordering::Relaxed);
-                                    break;
-                                }
-                                tracing::trace!("decoded some sort of handshake: {:?}", handshake);
-                                let handshake = handshake[0].clone();
-                                self.handle_handshake(
-                                    handshake,
-                                    s2c_key,
-                                    addr,
-                                    send_dead.clone(),
-                                    accepted.clone(),
-                                )
-                                .await;
-                                failed = false;
+                    }
+                    // we know it's not part of an existing session then. we decrypt it under the current key
+                    let stats = self.stats.clone();
+                    stats.handshaking.store(true, Ordering::Relaxed);
+                    scopeguard::defer!(stats.handshaking.store(false, Ordering::Relaxed));
+                    let s2c_key = self.cookie.generate_s2c().next().unwrap();
+                    let mut failed = true;
+                    for possible_key in self.cookie.generate_c2s() {
+                        let crypter = LegacyAead::new(&possible_key);
+                        if let Some(handshake) = crypter.pad_decrypt_v1::<HandshakeFrame>(&buffer) {
+                            if !RECENT_FILTER.lock().check(&buffer) {
+                                tracing::debug!(
+                                    "discarding replay attempt with len {}",
+                                    buffer.len()
+                                );
+                                self.stats.packets_replay.fetch_add(1, Ordering::Relaxed);
                                 break;
                             }
+                            tracing::trace!("decoded some sort of handshake: {:?}", handshake);
+                            let handshake = handshake[0].clone();
+                            self.handle_handshake(
+                                handshake,
+                                s2c_key,
+                                addr,
+                                send_dead.clone(),
+                                accepted.clone(),
+                            )
+                            .await;
+                            failed = false;
+                            break;
                         }
-                        if failed {
-                            self.stats.packets_failed.fetch_add(1, Ordering::Relaxed);
-                        }
+                    }
+                    if failed {
+                        self.stats.packets_failed.fetch_add(1, Ordering::Relaxed);
                     }
                 }
             }
