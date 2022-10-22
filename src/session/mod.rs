@@ -86,6 +86,8 @@ impl Session {
             send_decoded,
             recv_outgoing,
         };
+        let count = TOTAL_BACKS.fetch_add(1, Ordering::Relaxed);
+        eprintln!("***** {count} SessionBacks *****");
         let send_crypt_key = match cfg.role {
             Role::Server => blake3::keyed_hash(crate::crypt::DN_KEY, &cfg.session_key),
             Role::Client => blake3::keyed_hash(crate::crypt::UP_KEY, &cfg.session_key),
@@ -146,11 +148,19 @@ impl Session {
     }
 }
 
+static TOTAL_BACKS: AtomicUsize = AtomicUsize::new(0);
+
 /// "Back side" of a Session.
 pub(crate) struct SessionBack {
     machine: Mutex<RecvMachine>,
     send_decoded: Sender<Buff>,
     recv_outgoing: Receiver<Buff>,
+}
+
+impl Drop for SessionBack {
+    fn drop(&mut self) {
+        TOTAL_BACKS.fetch_sub(1, Ordering::Relaxed);
+    }
 }
 
 impl SessionBack {
