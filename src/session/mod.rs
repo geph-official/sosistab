@@ -8,7 +8,13 @@ use smol::channel::{Receiver, Sender, TrySendError};
 use smol::prelude::*;
 use stats::StatsCalculator;
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 use thiserror::Error;
 
 mod machine;
@@ -46,8 +52,11 @@ pub struct Session {
     _task: smol::Task<()>,
 }
 
+static TOTAL_SESSIONS: AtomicUsize = AtomicUsize::new(0);
+
 impl Drop for Session {
     fn drop(&mut self) {
+        TOTAL_SESSIONS.fetch_sub(1, Ordering::Relaxed);
         for v in self.dropper.drain(0..) {
             v()
         }
@@ -57,6 +66,8 @@ impl Drop for Session {
 impl Session {
     /// Creates a Session.
     pub(crate) fn new(cfg: SessionConfig) -> (Self, SessionBack) {
+        let count = TOTAL_SESSIONS.fetch_add(1, Ordering::Relaxed);
+        eprintln!("***** {count} Sessions *****");
         let (send_tosend, recv_tosend) = smol::channel::bounded(2048);
         let gather = cfg.gather.clone();
         let calculator = Arc::new(StatsCalculator::new(gather.clone()));
