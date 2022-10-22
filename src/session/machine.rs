@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 
 use crate::{
     buffer::Buff,
@@ -22,6 +25,14 @@ pub(crate) struct RecvMachine {
     ping_calc: Arc<StatsCalculator>,
 }
 
+static TOTAL_MACHINES: AtomicUsize = AtomicUsize::new(0);
+
+impl Drop for RecvMachine {
+    fn drop(&mut self) {
+        TOTAL_MACHINES.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
 impl RecvMachine {
     /// Creates a new machine based on a version and a down decrypter.
     pub fn new(
@@ -30,6 +41,8 @@ impl RecvMachine {
         session_key: &[u8],
         direction: Role,
     ) -> Self {
+        let count = TOTAL_MACHINES.fetch_add(1, Ordering::Relaxed);
+        eprintln!("***** {count} RecvMachines *****");
         let recv_crypt_key = match direction {
             Role::Server => blake3::keyed_hash(crate::crypt::UP_KEY, session_key),
             Role::Client => blake3::keyed_hash(crate::crypt::DN_KEY, session_key),
