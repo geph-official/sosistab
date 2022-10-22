@@ -73,8 +73,7 @@ impl BuffMut {
 }
 
 /// Represents an *immutable* buffer.
-#[derive(Clone, Debug, Deserialize, Hash)]
-#[allow(clippy::derive_hash_xor_eq)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(from = "BuffMut")]
 pub struct Buff {
     frozen: Arc<BuffMut>,

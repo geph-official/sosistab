@@ -61,10 +61,10 @@ impl Listener {
         on_recv: impl Fn(usize, SocketAddr) + 'static + Send + Sync,
         on_send: impl Fn(usize, SocketAddr) + 'static + Send + Sync,
     ) -> std::io::Result<Self> {
-        #[cfg(not(unix))]
+        // #[cfg(not(unix))]
         let socket = runtime::new_udp_socket_bind(addr)?;
-        #[cfg(unix)]
-        let socket = fastudp::FastUdpSocket::from(std::net::UdpSocket::bind(addr)?);
+        // #[cfg(unix)]
+        // let socket = fastudp::FastUdpSocket::from(std::net::UdpSocket::bind(addr)?);
         let local_addr = socket.get_ref().local_addr().unwrap();
         let cookie = Cookie::new((&long_sk).into());
         let (send, recv) = smol::channel::unbounded();
@@ -288,7 +288,7 @@ impl ListenerActor {
                         .session_table
                         .rebind(addr, shard_id, resume_token.clone())
                     {
-                        tracing::debug!("ClientResume from {} is new!", addr);
+                        tracing::debug!("ClientResume from {} ({:?}) is new!", addr, resume_token);
 
                         let write_socket = self.socket.clone();
                         let locked_addrs = ShardedAddrs::new(shard_id, addr);

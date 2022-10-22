@@ -16,7 +16,7 @@ use super::{
 };
 
 pub async fn multiplex(
-    recv_session: Receiver<Arc<Session>>,
+    recv_session: Receiver<Session>,
     urel_send_recv: Receiver<Buff>,
     urel_recv_send: Sender<Buff>,
     conn_open_recv: Receiver<(Option<String>, Sender<RelConn>)>,
@@ -45,7 +45,7 @@ pub async fn multiplex(
 
     // enum of possible events
     enum Event {
-        SessionReplace(Arc<Session>),
+        SessionReplace(Session),
         RecvMsg(Message),
         SendMsg(Message),
         ConnOpen(Option<String>, Sender<RelConn>),
@@ -129,18 +129,14 @@ pub async fn multiplex(
                         }
                     };
                     tracing::trace!("conn open send {}", stream_id);
-                    drop(
-                        glob_send
-                            .send(Message::Rel {
-                                kind: RelKind::Syn,
-                                stream_id,
-                                seqno: 0,
-                                payload: Buff::copy_from_slice(
-                                    additional_data.clone().unwrap_or_default().as_bytes(),
-                                ),
-                            })
-                            .await,
-                    );
+                    let _ = glob_send.try_send(Message::Rel {
+                        kind: RelKind::Syn,
+                        stream_id,
+                        seqno: 0,
+                        payload: Buff::copy_from_slice(
+                            additional_data.clone().unwrap_or_default().as_bytes(),
+                        ),
+                    });
                 })
                 .detach();
             }
@@ -194,7 +190,7 @@ pub async fn multiplex(
                             );
                             // the RelConn itself is responsible for sending the SynAck. Here we just store the connection into the table, accept it, and be done with it.
                             conn_tab.set_stream(stream_id, new_conn_back);
-                            drop(conn_accept_send.send(new_conn).await);
+                            let _ = conn_accept_send.try_send(new_conn);
                         }
                     }
                     // associated with existing connection

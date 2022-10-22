@@ -76,10 +76,17 @@ impl SessionTable {
             addr_to_token.insert(addr, token);
             true
         } else {
+            tracing::debug!(
+                "[{:p}] token {:?} not in {:?}",
+                self,
+                token,
+                token_to_sess.keys().collect::<Vec<_>>()
+            );
             false
         }
     }
     pub fn delete(&self, token: Buff) {
+        tracing::debug!("removing token {:?}", token);
         let mut token_to_sess = self.token_to_sess.write();
         let mut addr_to_token = self.addr_to_token.write();
         if let Some(entry) = token_to_sess.remove(&token) {
@@ -108,6 +115,12 @@ impl SessionTable {
             session_back,
             addrs: locked_addrs,
         };
-        token_to_sess.insert(token, entry);
+        token_to_sess.insert(token.clone(), entry);
+        tracing::debug!(
+            "[{:p}] token {:?} now in {:?}",
+            self,
+            token,
+            token_to_sess.keys().collect::<Vec<_>>()
+        );
     }
 }

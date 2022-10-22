@@ -15,7 +15,7 @@ pub struct Multiplex {
     urel_recv: Receiver<Buff>,
     conn_open: Sender<(Option<String>, Sender<RelConn>)>,
     conn_accept: Receiver<RelConn>,
-    send_session: Sender<Arc<Session>>,
+    send_session: Sender<Session>,
     _task: smol::Task<()>,
 }
 
@@ -31,7 +31,6 @@ impl Multiplex {
         let (urel_recv_send, urel_recv) = smol::channel::bounded(4096);
         let (conn_open, conn_open_recv) = smol::channel::unbounded();
         let (conn_accept_send, conn_accept) = smol::channel::bounded(100);
-        let session = Arc::new(session);
         send_session.try_send(session).unwrap();
         let _task = runtime::spawn(async move {
             let retval = multiplex_actor::multiplex(
@@ -75,7 +74,6 @@ impl Multiplex {
 
     /// Replaces the internal Session. This drops the previous Session, but this is not guaranteed to happen immediately.
     pub async fn replace_session(&self, sess: Session) {
-        let sess = Arc::new(sess);
         let _ = self.send_session.try_send(sess);
     }
 
