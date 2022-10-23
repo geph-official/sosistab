@@ -182,12 +182,12 @@ impl OobDecoder {
     /// Create a new OOB decoder that has at most that many entries
     fn new() -> Self {
         let data_frames = Cache::builder()
-            .time_to_live(Duration::from_secs(1))
-            .max_capacity(1000)
+            .time_to_live(Duration::from_secs(10))
+            .max_capacity(100)
             .build();
         let parity_space = Cache::builder()
-            .time_to_live(Duration::from_secs(1))
-            .max_capacity(1000)
+            .time_to_live(Duration::from_secs(10))
+            .max_capacity(100)
             .build();
         Self {
             data_frames,
