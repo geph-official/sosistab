@@ -166,8 +166,8 @@ impl ReplayFilter {
 
 /// An out-of-band FEC reconstructor
 struct OobDecoder {
-    data_frames: Cache<u64, Buff>,
-    parity_space: Cache<ParitySpaceKey, im::HashMap<u8, Buff>>,
+    data_frames: SizedCache<u64, Buff>,
+    parity_space: SizedCache<ParitySpaceKey, FxHashMap<u8, Buff>>,
 }
 
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
@@ -181,14 +181,8 @@ struct ParitySpaceKey {
 impl OobDecoder {
     /// Create a new OOB decoder that has at most that many entries
     fn new() -> Self {
-        let data_frames = Cache::builder()
-            .thread_pool_enabled(false)
-            .max_capacity(100)
-            .build();
-        let parity_space = Cache::builder()
-            .thread_pool_enabled(false)
-            .max_capacity(10)
-            .build();
+        let data_frames = SizedCache::with_size(100);
+        let parity_space = SizedCache::with_size(10);
         Self {
             data_frames,
             parity_space,
@@ -197,7 +191,7 @@ impl OobDecoder {
 
     /// Insert a new data frame.
     fn insert_data(&mut self, frame_no: u64, data: Buff) {
-        self.data_frames.insert(frame_no, data);
+        self.data_frames.cache_set(frame_no, data);
     }
 
     /// Inserts a new parity frame, and attempt to reconstruct.
@@ -207,7 +201,9 @@ impl OobDecoder {
         parity_idx: u8,
         parity: Buff,
     ) -> Vec<(u64, Buff)> {
-        let mut hash_ref = self.parity_space.get(&parity_info).unwrap_or_default();
+        let hash_ref = self
+            .parity_space
+            .cache_get_or_set_with(parity_info, FxHashMap::default);
         // if 255 is set, this means that the parity is done
         if hash_ref.get(&255).is_some() {
             return vec![];
@@ -219,7 +215,7 @@ impl OobDecoder {
             let mut toret = Vec::new();
             for i in parity_info.first_data..parity_info.first_data + (parity_info.data_len as u64)
             {
-                if let Some(v) = self.data_frames.get(&i) {
+                if let Some(v) = self.data_frames.cache_get(&i) {
                     toret.push((i, v.clone()))
                 }
             }
@@ -244,9 +240,8 @@ impl OobDecoder {
             for (idx, _) in actual_data.iter() {
                 missing_data_seqnos.retain(|v| v != idx);
             }
-            self.parity_space.insert(parity_info, hash_ref.clone());
             // then the parity shards
-            for (par_idx, data) in hash_ref.iter() {
+            for (par_idx, data) in hash_ref {
                 if let Some(res) = decoder.decode(
                     data,
                     (parity_info.data_len.saturating_add(*par_idx as u8)) as _,
