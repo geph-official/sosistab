@@ -15,6 +15,7 @@ use crate::{
 };
 use cached::{Cached, SizedCache};
 use moka::sync::Cache;
+use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -178,6 +179,9 @@ struct ParitySpaceKey {
     pad_size: usize,
 }
 
+/// Disable all out-of-band decoding to save memory
+static SOSISTAB_NO_OOB: Lazy<bool> = Lazy::new(|| std::env::var("SOSISTAB_NO_OOB").is_ok());
+
 impl OobDecoder {
     /// Create a new OOB decoder that has at most that many entries
     fn new() -> Self {
@@ -191,6 +195,9 @@ impl OobDecoder {
 
     /// Insert a new data frame.
     fn insert_data(&mut self, frame_no: u64, data: Buff) {
+        if *SOSISTAB_NO_OOB {
+            return;
+        }
         self.data_frames.cache_set(frame_no, data);
     }
 
@@ -201,6 +208,9 @@ impl OobDecoder {
         parity_idx: u8,
         parity: Buff,
     ) -> Vec<(u64, Buff)> {
+        if *SOSISTAB_NO_OOB {
+            return vec![];
+        }
         let hash_ref = self
             .parity_space
             .cache_get_or_set_with(parity_info, FxHashMap::default);
