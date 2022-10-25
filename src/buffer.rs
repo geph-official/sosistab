@@ -49,9 +49,7 @@ impl BuffMut {
     /// Creates a new BuffMut
     #[inline]
     pub fn new() -> Self {
-        Self {
-            inner: Vec::with_capacity(4096),
-        }
+        Self { inner: Vec::new() }
     }
 
     /// Freezes the BuffMut into a Buff.
