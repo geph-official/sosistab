@@ -68,7 +68,7 @@ impl Session {
     pub(crate) fn new(cfg: SessionConfig) -> (Self, SessionBack) {
         let count = TOTAL_SESSIONS.fetch_add(1, Ordering::Relaxed);
         eprintln!("***** {count} Sessions *****");
-        let (send_tosend, recv_tosend) = smol::channel::bounded(2048);
+        let (send_tosend, recv_tosend) = smol::channel::bounded(256);
         let gather = cfg.gather.clone();
         let calculator = Arc::new(StatsCalculator::new(gather.clone()));
         let rloss = Arc::new(Mutex::new(RecvLossCalc::new(1.0)));
@@ -79,8 +79,8 @@ impl Session {
             cfg.role,
         ));
 
-        let (send_decoded, recv_decoded) = smol::channel::bounded(1024);
-        let (send_outgoing, recv_outgoing) = smol::channel::bounded(1024);
+        let (send_decoded, recv_decoded) = smol::channel::bounded(256);
+        let (send_outgoing, recv_outgoing) = smol::channel::bounded(256);
         let session_back = SessionBack {
             machine,
             send_decoded,
@@ -299,7 +299,9 @@ async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<
                     };
                     let send_padded = send_framed.pad(loss_u8);
                     let send_encrypted = ctx.send_crypt.encrypt(&send_padded);
-                    ctx.send_outgoing.send(send_encrypted).await.ok()?;
+                    if ctx.send_outgoing.try_send(send_encrypted).is_err() {
+                        tracing::warn!("dropping send due to backpressure");
+                    }
                     // // Pace the FEC packets!
                     // pacer.wait_next().await;
                     // pacer.set_interval(Duration::from_secs_f64(0.5 / ctx.statg.max_pps()));

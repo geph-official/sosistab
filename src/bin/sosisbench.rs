@@ -72,17 +72,6 @@ struct SelfTestArgs {}
 // #[global_allocator]
 // static ALLOCATOR: dhat::DhatAlloc = dhat::DhatAlloc;
 fn main() -> anyhow::Result<()> {
-    let (send_trace, recv_trace) = smol::channel::unbounded();
-    let _trace_saver = smolscale::spawn(async move {
-        let mut file = smol::fs::File::create("pkt_trace.log").await.unwrap();
-        loop {
-            let line: String = recv_trace.recv().await.unwrap();
-            file.write_all(format!("{}\n", line).as_bytes())
-                .await
-                .unwrap();
-        }
-    });
-    sosistab::init_packet_tracing(move |line| send_trace.try_send(line).unwrap());
     env_logger::init();
     let args: Args = argh::from_env();
     match args.nested {
@@ -165,8 +154,8 @@ async fn client_main(args: ClientArgs) -> anyhow::Result<()> {
         (&*SNAKEOIL_SK).into(),
         Default::default(),
     );
-    cfg.shard_count = 8;
-    cfg.reset_interval = Some(Duration::from_secs(3));
+    cfg.shard_count = 1;
+    cfg.reset_interval = Some(Duration::from_secs(30));
     let session = cfg.connect().await.context("cannot connect to sosistab")?;
     eprintln!("Session established in {:?}", start.elapsed());
     let mux = sosistab::Multiplex::new(session);

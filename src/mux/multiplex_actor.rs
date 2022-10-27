@@ -153,9 +153,6 @@ pub async fn multiplex(
                     // unreliable
                     Message::Urel(bts) => {
                         tracing::trace!("urel recv {}B", bts.len());
-                        if urel_recv_send.try_send(bts).is_err() {
-                            tracing::warn!("urel recv overflow");
-                        }
                     }
                     // connection opening
                     Message::Rel {

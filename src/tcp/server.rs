@@ -221,7 +221,9 @@ impl DownTable {
     /// Sends something to a socketaddr. Silently drops on error.
     fn send_to(&self, msg: Buff, dest: SocketAddr) {
         if let Some(val) = self.mapping.get(&dest) {
-            let _ = val.value().0.try_send(msg);
+            if val.value().0.try_send(msg).is_err() {
+                tracing::warn!("full buffer on tcp down send");
+            }
         }
     }
 
