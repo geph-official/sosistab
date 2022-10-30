@@ -61,10 +61,13 @@ impl ClientConfig {
                     )
                 }),
                 Protocol::DirectUdp => Arc::new(|| {
-                    Arc::new(
-                        runtime::new_udp_socket_bind("0.0.0.0:0".parse::<SocketAddr>().unwrap())
-                            .unwrap(),
-                    )
+                    let addr = "0.0.0.0:0".parse::<SocketAddr>().unwrap();
+                    #[cfg(not(target_os = "linux"))]
+                    let socket = runtime::new_udp_socket_bind(addr).unwrap();
+                    #[cfg(target_os = "linux")]
+                    let socket =
+                        fastudp::FastUdpSocket::from(std::net::UdpSocket::bind(addr).unwrap());
+                    Arc::new(socket)
                 }),
             },
             num_shards: self.shard_count,
