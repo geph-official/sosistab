@@ -62,9 +62,9 @@ impl ClientConfig {
                 }),
                 Protocol::DirectUdp => Arc::new(|| {
                     let addr = "0.0.0.0:0".parse::<SocketAddr>().unwrap();
-                    #[cfg(not(target_os = "linux"))]
+                    #[cfg(not(any(target_os = "linux", target_os = "android")))]
                     let socket = runtime::new_udp_socket_bind(addr).unwrap();
-                    #[cfg(target_os = "linux")]
+                    #[cfg(any(target_os = "linux", target_os = "android"))]
                     let socket =
                         fastudp::FastUdpSocket::from(std::net::UdpSocket::bind(addr).unwrap());
                     Arc::new(socket)

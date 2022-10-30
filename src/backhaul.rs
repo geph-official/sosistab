@@ -93,12 +93,3 @@ impl Backhaul for Async<UdpSocket> {
         Ok((buf.freeze().slice(0..n), origin))
     }
 }
-
-#[cfg(target_family = "unix")]
-fn to_ioerror(err: nix::Error) -> std::io::Error {
-    if err == nix::errno::Errno::EWOULDBLOCK || err == nix::errno::Errno::EAGAIN {
-        return std::io::Error::new(std::io::ErrorKind::WouldBlock, err);
-    }
-
-    std::io::Error::new(std::io::ErrorKind::ConnectionAborted, err)
-}

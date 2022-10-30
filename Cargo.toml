@@ -81,6 +81,10 @@ debug=2
 nix= "0.23.0"
 fastudp="0.1.3"
 
+[target.'cfg(target_os="android")'.dependencies]
+nix= "0.23.0"
+fastudp="0.1.3"
+
 [dev-dependencies]
 
 socksv5= "0.3.0"
