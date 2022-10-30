@@ -31,8 +31,7 @@ impl CongestionControl for Highspeed {
         // let multiplier = self.last_loss.elapsed().as_secs_f64().max(1.0).min(32.0);
         // tracing::debug!("ack => {:.2}", self.cwnd);
         self.bdp = current_bdp;
-        self.cwnd += self.multiplier as f64 * (ping as f64 / 50.0) * (self.cwnd.powf(0.4)).max(1.0)
-            / self.cwnd;
+        self.cwnd += self.multiplier as f64 * (self.cwnd.powf(0.4)).max(1.0) / self.cwnd;
         // tracing::debug!("ack {}", self.cwnd);
     }
 

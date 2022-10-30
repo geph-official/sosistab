@@ -4,6 +4,7 @@ use std::{
 };
 
 use bipe::{BipeReader, BipeWriter};
+use once_cell::sync::Lazy;
 use rustc_hash::FxHashSet;
 use smol::channel::Receiver;
 
@@ -16,6 +17,8 @@ use crate::{
     pacer::Pacer,
     safe_deserialize, MyFutureExt,
 };
+
+static SOSISTAB_UNFAIR_CC: Lazy<bool> = Lazy::new(|| std::env::var("SOSISTAB_UNFAIR_CC").is_ok());
 
 use super::{inflight::Inflight, MSS};
 use smol::prelude::*;
@@ -60,7 +63,11 @@ impl Default for ConnVars {
             // next_pace_time: Instant::now(),
             lost_seqnos: BTreeSet::new(),
             last_loss: None,
-            cc: Box::new(Cubic::new(0.7, 0.4)),
+            cc: if *SOSISTAB_UNFAIR_CC {
+                Box::new(Highspeed::new(4))
+            } else {
+                Box::new(Cubic::new(0.7, 0.4))
+            },
             pacer: Pacer::new(Duration::from_millis(1)),
             // cc: Box::new(Highspeed::new(1)),
             // cc: Box::new(Trivial::new(00)),
@@ -347,15 +354,9 @@ impl ConnVars {
                     return Ok(ConnVarEvt::Closing);
                 }
             }
-            // let pacing_interval = Duration::from_secs_f64(1.0 / self.pacing_rate());
-            // self.pacer.set_interval(pacing_interval);
-            // self.pacer.wait_next().await;
-            // if self.next_free_seqno % PACE_BATCH as u64 == 0 {
-            //     smol::Timer::at(self.next_pace_time).await;
-            //     let pacing_interval = Duration::from_secs_f64(1.0 / self.pacing_rate());
-            //     self.next_pace_time =
-            //         Instant::now().max(self.next_pace_time + pacing_interval * PACE_BATCH as u32);
-            // }
+            let pacing_interval = Duration::from_secs_f64(1.0 / self.pacing_rate());
+            self.pacer.set_interval(pacing_interval);
+            self.pacer.wait_next().await;
             Ok::<ConnVarEvt, anyhow::Error>(ConnVarEvt::NewWrite(
                 self.write_fragments.pop_front().unwrap(),
             ))

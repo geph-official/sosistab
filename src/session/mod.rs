@@ -2,6 +2,7 @@ use crate::{buffer::Buff, fec::FrameEncoder};
 use crate::{crypt::AeadError, mux::Multiplex, runtime, StatsGatherer};
 use crate::{crypt::NgAead, protocol::DataFrameV2};
 use machine::RecvMachine;
+use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use rloss::RecvLossCalc;
 use smol::channel::{Receiver, Sender, TrySendError};
