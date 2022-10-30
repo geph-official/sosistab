@@ -54,7 +54,7 @@ impl<B: Backhaul> Backhaul for StatsBackhaul<B> {
 }
 
 #[async_trait::async_trait]
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 impl Backhaul for fastudp::FastUdpSocket {
     async fn send_to(&self, to_send: Buff, dest: SocketAddr) -> io::Result<()> {
         if to_send.len() > 1472 {
