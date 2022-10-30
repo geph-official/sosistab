@@ -77,7 +77,7 @@ panic = "abort"
 opt-level=3
 debug=2
 
-[target.'cfg(unix)'.dependencies]
+[target.'cfg(target_os="linux")'.dependencies]
 nix= "0.23.0"
 fastudp="0.1.3"
 

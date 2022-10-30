@@ -1,4 +1,3 @@
-use fastudp::FastUdpSocket;
 use smol::Async;
 use std::{
     io,
@@ -55,8 +54,8 @@ impl<B: Backhaul> Backhaul for StatsBackhaul<B> {
 }
 
 #[async_trait::async_trait]
-#[cfg(unix)]
-impl Backhaul for FastUdpSocket {
+#[cfg(target_os = "linux")]
+impl Backhaul for fastudp::FastUdpSocket {
     async fn send_to(&self, to_send: Buff, dest: SocketAddr) -> io::Result<()> {
         if to_send.len() > 1472 {
             tracing::warn!("dropping oversize packet of length {}", to_send.len());
