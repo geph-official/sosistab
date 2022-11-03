@@ -38,8 +38,8 @@ indexmap= "1.9.1"
 bloomfilter = { version = "1.0.9", features = ["random"] }
 concurrent-queue= "1.2.4"
 rand_chacha= "0.2.2"
-smolscale= "0.3.44"
-# smolscale={path="../smolscale"}
+# smolscale= "0.3.44"
+smolscale={path="../smolscale"}
 futures-intrusive= "0.4.1"
 async-trait= "0.1.58"
 dashmap= "5.4.0"

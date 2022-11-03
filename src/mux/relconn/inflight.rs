@@ -144,7 +144,7 @@ impl Inflight {
                 let seg = self.segments.get_mut(&seqno).unwrap();
                 // if send time was in the past far enough, retransmit
                 if seg.retrans == 0
-                    && seg.retrans_time + self.rtt.rtt_var() * 4 <= acked_seg.retrans_time
+                    && seg.retrans_time + self.rtt.rtt_var() * 2 <= acked_seg.retrans_time
                     && seg.retrans_time > now
                 {
                     tracing::debug!(
