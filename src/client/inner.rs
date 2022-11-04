@@ -26,8 +26,8 @@ pub(crate) struct LowlevelClientConfig {
 
 /// Connects to a remote server, given a closure that generates socket addresses.
 pub(crate) async fn connect_custom(cfg: LowlevelClientConfig) -> std::io::Result<Session> {
-    let my_long_sk = x25519_dalek::StaticSecret::new(&mut rand::thread_rng());
-    let my_eph_sk = x25519_dalek::StaticSecret::new(&mut rand::thread_rng());
+    let my_long_sk = x25519_dalek::StaticSecret::new(rand::thread_rng());
+    let my_eph_sk = x25519_dalek::StaticSecret::new(rand::thread_rng());
     // do the handshake
     let cookie = crypt::Cookie::new(cfg.server_pubkey);
     let init_hello = protocol::HandshakeFrame::ClientHello {
