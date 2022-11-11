@@ -204,8 +204,8 @@ impl ListenerActor {
                         let crypter = LegacyAead::new(&possible_key);
                         if let Some(handshake) = crypter.pad_decrypt_v1::<HandshakeFrame>(&buffer) {
                             if !RECENT_FILTER.lock().check(&buffer) {
-                                tracing::debug!(
-                                    "discarding replay attempt with len {}",
+                                tracing::error!(
+                                    "discarding replay attempt with len {} from {addr}",
                                     buffer.len()
                                 );
                                 self.stats.packets_replay.fetch_add(1, Ordering::Relaxed);
