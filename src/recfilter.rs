@@ -1,32 +1,49 @@
-use std::time::Instant;
+use std::{
+    collections::{HashMap, VecDeque},
+    time::{Duration, Instant},
+};
 
+use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 
 // recently seen tracker
 pub(crate) struct RecentFilter {
-    curr_bloom: bloomfilter::Bloom<[u8]>,
-    last_bloom: bloomfilter::Bloom<[u8]>,
-    curr_time: Instant,
+    seen: HashMap<blake3::Hash, Instant>,
+    expiry: VecDeque<(Instant, blake3::Hash)>,
 }
 
 impl RecentFilter {
     fn new() -> Self {
         RecentFilter {
-            curr_bloom: bloomfilter::Bloom::new_for_fp_rate(1000000, 0.01),
-            last_bloom: bloomfilter::Bloom::new_for_fp_rate(1000000, 0.01),
-            curr_time: Instant::now(),
+            seen: Default::default(),
+            expiry: Default::default(),
         }
     }
 
     pub fn check(&mut self, val: &[u8]) -> bool {
-        let start = Instant::now();
-        if start.saturating_duration_since(self.curr_time).as_secs() > 600 {
-            std::mem::swap(&mut self.curr_bloom, &mut self.last_bloom);
-            self.curr_bloom.clear();
-            self.curr_time = start
+        // clean up first
+        while let Some(to_delete) = self.expiry.front().and_then(|(expiry, hash)| {
+            if expiry.elapsed() > Duration::from_secs(600) {
+                Some(*hash)
+            } else {
+                None
+            }
+        }) {
+            let _ = self.expiry.pop_front();
+            self.seen.remove(&to_delete);
         }
-        !(self.curr_bloom.check_and_set(val) || self.last_bloom.check(val))
+        // then add
+        let key = blake3::hash(val);
+        if let Some(time) = self.seen.get(&key) {
+            tracing::error!("replay from {:?} ago", time.elapsed());
+            false
+        } else {
+            let now = Instant::now();
+            self.seen.insert(key, now);
+            self.expiry.push_back((now, key));
+            true
+        }
     }
 }
 
