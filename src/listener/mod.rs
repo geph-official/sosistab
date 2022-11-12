@@ -205,8 +205,9 @@ impl ListenerActor {
                         if let Some(handshake) = crypter.pad_decrypt_v1::<HandshakeFrame>(&buffer) {
                             if !RECENT_FILTER.lock().check(&buffer) {
                                 tracing::error!(
-                                    "discarding replay attempt with len {} from {addr}",
-                                    buffer.len()
+                                    "discarding replay attempt with len {} from {addr}: {:?}",
+                                    buffer.len(),
+                                    handshake
                                 );
                                 self.stats.packets_replay.fetch_add(1, Ordering::Relaxed);
                                 break;
