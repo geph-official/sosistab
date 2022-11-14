@@ -20,7 +20,10 @@ use crate::{
     runtime, Backhaul,
 };
 
-use super::{write_encrypted, ObfsTcp, CONN_LIFETIME, TCP_DN_KEY, TCP_UP_KEY};
+use super::{
+    tls_helpers::opportunistic_tls_serve, write_encrypted, ObfsTcp, CONN_LIFETIME, TCP_DN_KEY,
+    TCP_UP_KEY,
+};
 
 /// A TCP-based backhaul, server-side.
 pub struct TcpServerBackhaul {
@@ -97,6 +100,10 @@ async fn backhaul_one(
     down_table: Arc<DownTable>,
     send_upcoming: Sender<(Buff, SocketAddr)>,
 ) -> anyhow::Result<()> {
+    let mut client = async_dup::Arc::new(async_dup::Mutex::new(
+        opportunistic_tls_serve(client).await?,
+    ));
+
     let cookie = Cookie::new((&seckey).into());
     // read the initial length
     let mut encrypted_hello_length = vec![0u8; NgAead::overhead() + 2];

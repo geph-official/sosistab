@@ -10,6 +10,7 @@ use smol::io::BufReader;
 use smol::prelude::*;
 
 mod client;
+mod tls_helpers;
 pub use client::*;
 mod server;
 pub use server::*;
