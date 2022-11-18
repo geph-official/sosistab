@@ -44,7 +44,7 @@ impl WrappedReedSolomon {
         let count = self
             .counter
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        if count == 255 {
+        if count == 65536 {
             let inner = galois_8::ReedSolomon::new(self.data_shards, self.parity_shards).unwrap();
             self.inner.swap(Arc::new(inner));
         }
