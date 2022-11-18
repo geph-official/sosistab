@@ -79,7 +79,7 @@ impl DataFrameV2 {
         let mut toret = BuffMut::new();
         options.serialize_into(toret.deref_mut(), self).unwrap();
         toret.extend_from_slice(&[hidden_data]);
-        let padd_amount = 32 - toret.len() % 32;
+        let padd_amount = rand::thread_rng().gen_range(0, 10) + (32 - toret.len() % 32);
         toret.extend_from_slice(&vec![0xff; padd_amount]);
         toret.into()
     }

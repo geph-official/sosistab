@@ -81,7 +81,7 @@ impl LegacyAead {
 
     /// Pad and encrypt.
     pub fn pad_encrypt_v1(&self, msgs: &[impl Serialize], target_len: usize) -> Buff {
-        // let mut target_len = rand::thread_rng().gen_range(0, target_len);
+        let target_len = target_len + rand::thread_rng().gen_range(0, 10);
         let mut plain = Vec::with_capacity(1500);
         for msg in msgs {
             bincode::serialize_into(&mut plain, &msg).unwrap();
