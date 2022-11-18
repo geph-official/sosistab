@@ -1,6 +1,7 @@
 use std::ops::DerefMut;
 
 use bincode::Options;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::buffer::{Buff, BuffMut};
