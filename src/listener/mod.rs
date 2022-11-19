@@ -64,7 +64,8 @@ impl Listener {
         #[cfg(not(target_os = "linux"))]
         let socket = runtime::new_udp_socket_bind(addr)?;
         #[cfg(target_os = "linux")]
-        let socket = fastudp::FastUdpSocket::from(std::net::UdpSocket::bind(addr)?);
+        let socket =
+            fastudp::FastUdpSocket::from(runtime::new_udp_socket_bind(addr)?.into_inner().unwrap());
         let local_addr = socket.get_ref().local_addr().unwrap();
         let cookie = Cookie::new((&long_sk).into());
         let (send, recv) = smol::channel::unbounded();
