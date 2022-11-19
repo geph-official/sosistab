@@ -43,3 +43,21 @@ pub(crate) fn new_udp_socket_bind(addr: SocketAddr) -> std::io::Result<Async<Udp
     socket.bind(&addr.into())?;
     Ok(socket.into_udp_socket().try_into().unwrap())
 }
+
+/// Create a new UDP socket that has a largeish buffer and isn't bound to anything.
+pub(crate) fn new_udp_socket_bind_sync(addr: SocketAddr) -> std::io::Result<UdpSocket> {
+    let socket = Socket::new(
+        match addr {
+            SocketAddr::V4(_) => Domain::ipv4(),
+            SocketAddr::V6(_) => Domain::ipv6(),
+        },
+        Type::dgram(),
+        None,
+    )
+    .unwrap();
+    drop(socket.set_only_v6(false));
+    let _ = socket.set_recv_buffer_size(10 * 1024 * 1024);
+    let _ = socket.set_send_buffer_size(512 * 1024);
+    socket.bind(&addr.into())?;
+    Ok(socket.into_udp_socket())
+}
