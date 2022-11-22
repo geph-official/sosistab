@@ -7,7 +7,13 @@ use connvars::ConnVars;
 
 use smol::channel::{Receiver, Sender};
 use smol::prelude::*;
-use std::{pin::Pin, sync::Arc, task::Context, task::Poll, time::Duration};
+use std::{
+    pin::Pin,
+    sync::Arc,
+    task::Context,
+    task::Poll,
+    time::{Duration, Instant},
+};
 mod connvars;
 mod inflight;
 
@@ -121,7 +127,7 @@ pub(crate) enum RelConnState {
     },
     Reset {
         stream_id: u16,
-        death: smol::Timer,
+        death: Instant,
     },
 }
 use RelConnState::*;
@@ -175,7 +181,7 @@ async fn relconn_actor(
                 };
                 let success = synack_evt
                     .or(async {
-                        smol::Timer::after(Duration::from_millis(wait_interval as u64)).await;
+                        microsleep::sleep(Duration::from_millis(wait_interval as u64)).await;
                         Ok(false)
                     })
                     .await?;
@@ -223,7 +229,7 @@ async fn relconn_actor(
                     tracing::debug!("connection reset: {:?}", err);
                     Reset {
                         stream_id,
-                        death: smol::Timer::after(Duration::from_secs(MAX_WAIT_SECS)),
+                        death: Instant::now() + Duration::from_secs(MAX_WAIT_SECS),
                     }
                 } else {
                     SteadyState {
@@ -232,10 +238,7 @@ async fn relconn_actor(
                     }
                 }
             }
-            Reset {
-                stream_id,
-                mut death,
-            } => {
+            Reset { stream_id, death } => {
                 drop(send_read.close().await);
                 tracing::trace!("C={} RESET", stream_id);
                 transmit(Message::Rel {
@@ -246,7 +249,7 @@ async fn relconn_actor(
                 });
                 let die = smol::future::race(
                     async {
-                        (&mut death).await;
+                        microsleep::until(death).await;
                         true
                     },
                     async {

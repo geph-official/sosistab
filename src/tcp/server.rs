@@ -81,7 +81,7 @@ async fn backhaul_loop(
         smolscale::spawn(async move {
             if let Err(err) = backhaul_one(client, seckey.clone(), down_table, send_upcoming)
                 .or(async {
-                    smol::Timer::after(CONN_LIFETIME * 2).await;
+                    microsleep::sleep(CONN_LIFETIME * 2).await;
                     Ok(())
                 })
                 .await

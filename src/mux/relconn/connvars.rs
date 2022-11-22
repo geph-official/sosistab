@@ -314,7 +314,7 @@ impl ConnVars {
                 return Ok(ConnVarEvt::AckTimer);
             }
             if let Some(time) = ack_timer {
-                smol::Timer::at(time).await;
+                microsleep::until(time).await;
                 Ok::<ConnVarEvt, anyhow::Error>(ConnVarEvt::AckTimer)
             } else {
                 smol::future::pending().await
@@ -325,7 +325,7 @@ impl ConnVars {
         let rto_timeout = async move {
             let (rto_seqno, rto_time) = first_rto.unwrap();
             if rto_time > Instant::now() {
-                smol::Timer::at(rto_time).await;
+                microsleep::until(rto_time).await;
             }
             Ok::<ConnVarEvt, anyhow::Error>(ConnVarEvt::Rto(rto_seqno))
         }
@@ -366,7 +366,7 @@ impl ConnVars {
             Ok::<ConnVarEvt, anyhow::Error>(ConnVarEvt::NewPkt(recv_wire_read.recv().await?))
         };
         let final_timeout = async {
-            smol::Timer::after(Duration::from_secs(600)).await;
+            microsleep::sleep(Duration::from_secs(600)).await;
             anyhow::bail!("final timeout within relconn actor")
         };
         let retransmit = async { Ok(ConnVarEvt::Retransmit(first_retrans.unwrap())) }

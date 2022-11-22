@@ -169,7 +169,7 @@ impl TcpClientBackhaul {
                     };
                     let _: anyhow::Result<()> = main
                         .or(async {
-                            smol::Timer::after(CONN_LIFETIME).await;
+                            microsleep::sleep(CONN_LIFETIME).await;
                             Ok(())
                         })
                         .await;
