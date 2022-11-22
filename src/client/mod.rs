@@ -60,10 +60,13 @@ impl ClientConfig {
                             .add_remote_key(server_addr, server_pk),
                     )
                 }),
-                Protocol::DirectUdp => Arc::new(|| {
-                    let addr = "0.0.0.0:0".parse::<SocketAddr>().unwrap();
+                Protocol::DirectUdp => Arc::new(move || {
+                    let addr = if server_addr.is_ipv4() { "0.0.0.0:0" } else { "[::]:0" }
+                        .parse::<SocketAddr>().unwrap();
+
                     #[cfg(not(any(target_os = "linux", target_os = "android")))]
                     let socket = runtime::new_udp_socket_bind(addr).unwrap();
+
                     #[cfg(any(target_os = "linux", target_os = "android"))]
                     let socket =
                         fastudp::FastUdpSocket::from(std::net::UdpSocket::bind(addr).unwrap());
@@ -104,9 +107,12 @@ pub async fn connect_udp(
     inner::connect_custom(inner::LowlevelClientConfig {
         server_addr,
         server_pubkey: pubkey,
-        backhaul_gen: Arc::new(|| {
+        backhaul_gen: Arc::new(move || {
             Arc::new(
-                runtime::new_udp_socket_bind("0.0.0.0:0".parse::<SocketAddr>().unwrap()).unwrap(),
+                runtime::new_udp_socket_bind(
+                    if server_addr.is_ipv4() { "0.0.0.0:0" } else { "[::]:0" }
+                        .parse::<SocketAddr>().unwrap()
+                ).unwrap(),
             )
         }),
         num_shards: 4,
