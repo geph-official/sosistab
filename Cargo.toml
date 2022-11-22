@@ -72,7 +72,6 @@ native-tls = "0.2.11"
 eff-wordlist = "1.0.2"
 rcgen = "0.10.0"
 byteorder = "1.4.3"
-microsleep = "0.1.2"
 # sliding_extrema = "0.1.4"
 
 [profile.release]

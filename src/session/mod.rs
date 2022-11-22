@@ -14,7 +14,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 use thiserror::Error;
 
@@ -219,7 +219,7 @@ async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<
     const FEC_TIMEOUT_MS: u64 = 20;
 
     // FEC timer: when this expires, send parity packets regardless if we have assembled BURST_SIZE data packets.
-    let mut fec_timer = Instant::now() + Duration::from_millis(FEC_TIMEOUT_MS);
+    let mut fec_timer = smol::Timer::after(Duration::from_millis(FEC_TIMEOUT_MS));
     // Vector of "unfecked" frames.
     let mut unfecked: Vec<(u64, Buff)> = Vec::new();
     let mut fec_encoder = FrameEncoder::new(10); // around 4 percent
@@ -232,7 +232,7 @@ async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<
             }
             if unfecked.len() < BURST_SIZE {
                 // we need to wait, because the burst size isn't there yet
-                microsleep::until(fec_timer).await;
+                (&mut fec_timer).await;
             }
             Some(Event::FecTimeout)
         }
@@ -259,13 +259,13 @@ async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<
                 // increment frame no
                 frame_no += 1;
                 // reset fec timer
-                fec_timer = Instant::now() + Duration::from_millis(FEC_TIMEOUT_MS);
+                fec_timer.set_after(Duration::from_millis(FEC_TIMEOUT_MS));
                 // pacer.wait_next().await;
             }
             // we have something to send, as a FEC packet.
             Event::FecTimeout => {
                 // reset fec timer
-                fec_timer = Instant::now() + Duration::from_millis(FEC_TIMEOUT_MS);
+                fec_timer.set_after(Duration::from_millis(FEC_TIMEOUT_MS));
                 if unfecked.is_empty() {
                     continue;
                 }

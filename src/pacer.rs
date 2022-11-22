@@ -5,6 +5,7 @@ const QUANTUM: u32 = 8;
 /// A high-precision pacer that uses async-io's timers under the hood.
 pub struct Pacer {
     next_pace_time: Instant,
+    timer: smol::Timer,
     interval: Duration,
     counter: u32,
 }
@@ -14,6 +15,7 @@ impl Pacer {
     pub fn new(interval: Duration) -> Self {
         Self {
             next_pace_time: Instant::now(),
+            timer: smol::Timer::at(Instant::now()),
             interval,
             counter: 0,
         }
@@ -24,8 +26,9 @@ impl Pacer {
         self.counter += 1;
         if self.counter >= QUANTUM {
             self.counter = 0;
+            (&mut self.timer).await;
             self.next_pace_time = Instant::now().max(self.next_pace_time + self.interval * QUANTUM);
-            microsleep::until(self.next_pace_time).await;
+            self.timer.set_at(self.next_pace_time);
         } else {
             smol::future::yield_now().await;
         }

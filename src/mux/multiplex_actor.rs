@@ -33,7 +33,7 @@ pub async fn multiplex(
         move |id: u16| {
             tracing::debug!("reaper received {}", id);
             runtime::spawn(async move {
-                microsleep::sleep(Duration::from_secs(30)).await;
+                smol::Timer::after(Duration::from_secs(30)).await;
                 tracing::debug!("reaper executed {}", id);
                 let _ = dead_send.try_send(id);
             })

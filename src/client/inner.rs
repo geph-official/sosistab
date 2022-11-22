@@ -46,7 +46,7 @@ pub(crate) async fn connect_custom(cfg: LowlevelClientConfig) -> std::io::Result
         let res = backhaul
             .recv_from()
             .or(async {
-                microsleep::sleep(Duration::from_secs(timeout_factor.min(10))).await;
+                smol::Timer::after(Duration::from_secs(timeout_factor.min(10))).await;
                 Err(std::io::Error::new(
                     std::io::ErrorKind::TimedOut,
                     "timed out",

@@ -48,7 +48,7 @@ impl ClientWorker {
                 .await
                 {
                     tracing::error!("client_backhaul_once died: {:?}", err);
-                    microsleep::sleep(Duration::from_secs(1)).await;
+                    smol::Timer::after(Duration::from_secs(1)).await;
                 }
             })
         };
