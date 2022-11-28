@@ -190,6 +190,9 @@ fn uniform_pvalue(vals: &[usize]) -> f64 {
     if vals.is_empty() {
         return 0.0;
     }
+    if vals.iter().all(|a| *a == vals[0]) {
+        return 0.0;
+    }
     let total_count = vals.iter().sum::<usize>();
     let min = vals.iter().min().copied().unwrap();
     let distro = Binomial::new(total_count, 1.0 / (vals.len() as f64));
