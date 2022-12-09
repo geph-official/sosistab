@@ -29,8 +29,8 @@ impl RelConn {
         dropper: impl FnOnce() + Send + 'static,
         additional_info: Option<String>,
     ) -> (Self, RelConnBack) {
-        let (send_write, recv_write) = bipe::bipe(100);
-        let (send_read, recv_read) = bipe::bipe(200);
+        let (send_write, recv_write) = bipe::bipe(MSS * 2);
+        let (send_read, recv_read) = bipe::bipe(MSS * 4);
         let (send_wire_read, recv_wire_read) = smol::channel::bounded(100);
         let aic = additional_info.clone();
         let _task = runtime::spawn(async move {
