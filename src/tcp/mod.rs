@@ -52,7 +52,7 @@ impl ObfsTcp {
             .unwrap(),
         ));
         let buf_read =
-            async_dup::Arc::new(async_dup::Mutex::new(BufReader::with_capacity(65536, read)));
+            async_dup::Arc::new(async_dup::Mutex::new(BufReader::with_capacity(4096, read)));
         if is_server {
             Self {
                 write: async_dup::Arc::new(async_dup::Mutex::new(write)),
