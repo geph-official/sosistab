@@ -4,7 +4,7 @@ use smol::{io::BufReader, net::TcpStream, prelude::*};
 
 /// Negotiates an *optional* TLS connection.
 pub async fn opportunistic_tls_serve(client: TcpStream) -> anyhow::Result<CompositeReadWrite> {
-    let mut client_up = BufReader::with_capacity(65536, client.clone());
+    let mut client_up = BufReader::with_capacity(4096, client.clone());
     let initial = client_up.fill_buf().await?;
     // Checks to see whether the initial bit looks like a clienthello at all
     let is_tls = guess_client_hello(initial).is_ok();
