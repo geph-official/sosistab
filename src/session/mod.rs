@@ -208,6 +208,9 @@ async fn session_send_loop(ctx: SessionSendCtx) {
 
 const BURST_SIZE: usize = 16;
 
+/// Disable all FEC to save memory
+static SOSISTAB_NO_FEC: Lazy<bool> = Lazy::new(|| std::env::var("SOSISTAB_NO_FEC").is_ok());
+
 #[tracing::instrument(skip(ctx))]
 async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<()> {
     // let mut pacer = Pacer::new(Duration::from_millis(1) / 30);
@@ -270,7 +273,7 @@ async fn session_send_loop_nextgen(ctx: SessionSendCtx, version: u64) -> Option<
                     continue;
                 }
                 let measured_loss = ctx.statg.loss_u8();
-                if measured_loss == 0 {
+                if measured_loss == 0 || *SOSISTAB_NO_FEC {
                     unfecked.clear();
                     continue;
                 }
