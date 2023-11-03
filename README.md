@@ -1,3 +1,7 @@
+**This repo is now archived.**
+
+See https://github.com/geph-official/sosistab2 for the replacement, which multiplexes over multiple transports simultaneously.
+
 # Sosistab - an obfuscated datagram transport for horrible networks
 
 [![](https://img.shields.io/crates/v/sosistab)](https://crates.io/crates/sosistab)
